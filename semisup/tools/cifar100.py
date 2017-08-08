@@ -125,9 +125,11 @@ if __name__ == '__main__':
   print('tf version = ', tf.__version__)
   import numpy as np
   # test
-  images, labels = build_input('cifar100', '/usr/stud/plapp/data/cifar-100-binary/train.bin',
-                               batch_size=20, mode='train', subset_factor=5000)
+  images, labels = build_input('cifar10', '/usr/stud/plapp/data/cifar-10-batches-bin/train/*',
+                               batch_size=200, mode='train', subset_factor=1)
 
   sess = tf.Session()
   tf.train.start_queue_runners(sess)
-  print('labels of first batch:', sess.run(labels))
+  res = sess.run(labels)
+  print('labels of first batch:', res)
+  print('labels of first batch:', np.min(res), np.max(res))

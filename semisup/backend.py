@@ -74,7 +74,7 @@ def sample_by_label(images, labels, n_per_label, num_labels, seed=None):
   """Extract equal number of sampels per class."""
   res = []
   rng = np.random.RandomState(seed=seed)
-  for i in xrange(num_labels):
+  for i in range(num_labels):
     a = images[labels == i]
     if n_per_label == -1:  # use all available labeled data
       res.append(a)
@@ -97,7 +97,7 @@ def create_virt_emb(n, size):
 def confusion_matrix(labels, predictions, num_labels):
   """Compute the confusion matrix."""
   rows = []
-  for i in xrange(num_labels):
+  for i in range(num_labels):
     row = np.bincount(predictions[labels == i], minlength=num_labels)
     rows.append(row)
   return np.vstack(rows)
@@ -106,7 +106,7 @@ def confusion_matrix(labels, predictions, num_labels):
 class SemisupModel(object):
   """Helper class for setting up semi-supervised training."""
 
-  def __init__(self, model_func, num_labels, input_shape, test_in=None):
+  def __init__(self, model_func, num_labels, input_shape, test_in=None, optimizer='sgd'):
     """Initialize SemisupModel class.
 
     Creates an evaluation graph for the provided model_func.
@@ -128,6 +128,7 @@ class SemisupModel(object):
     self.test_batch_size = 100
 
     self.model_func = model_func
+    self.optimizer = optimizer
 
     if test_in is not None:
       self.test_in = test_in
@@ -140,7 +141,8 @@ class SemisupModel(object):
   def image_to_embedding(self, images, is_training=True):
     """Create a graph, transforming images into embedding vectors."""
     with tf.variable_scope('net', reuse=is_training):
-      return self.model_func(images, is_training=is_training)
+      self.model = self.model_func(images, is_training=is_training)
+      return self.model
 
   def embedding_to_logit(self, embedding, is_training=True):
     """Create a graph, transforming embedding vectors to logit classs scores."""
@@ -256,7 +258,15 @@ class SemisupModel(object):
     tf.summary.scalar('Loss_Total_Avg', self.train_loss_average)
     tf.summary.scalar('Loss_Total', self.train_loss)
 
-    trainer = tf.train.AdamOptimizer(learning_rate)
+    tf.Print(self.train_loss, [self.train_loss])
+
+    if self.optimizer == 'sgd':
+      trainer = tf.train.MomentumOptimizer(
+            learning_rate, 0.9, use_nesterov=False)
+    elif self.optimizer == 'adam':
+      trainer = tf.train.AdamOptimizer(learning_rate)
+    else:
+      print('unrecognized optimizer')
 
     self.train_op = slim.learning.create_train_op(self.train_loss, trainer)
     return self.train_op
@@ -265,10 +275,25 @@ class SemisupModel(object):
     """Evaluate 'endpoint' tensor for all 'images' using batches."""
     batch_size = self.test_batch_size
     emb = []
-    for i in xrange(0, len(images), batch_size):
-      emb.append(endpoint.eval({self.test_in: images[i:i + batch_size]}))
+    for i in range(0, len(images), batch_size):
+      emb.append(endpoint.eval({self.test_in: images[i: i+batch_size]}))
     return np.concatenate(emb)
 
   def classify(self, images):
     """Compute logit scores for provided images."""
     return self.calc_embedding(images, self.test_logit)
+
+  def get_images(self, img_queue, lbl_queue, num_batches, sess):
+    imgs = []
+    lbls = []
+
+    for i in range(num_batches):
+      i_, l_ = sess.run([img_queue, lbl_queue])
+      imgs.append(i_)
+      lbls.append(l_)
+
+    images = np.vstack(imgs)
+    labels = np.hstack(lbls)
+
+    return images, labels
+

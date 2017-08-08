@@ -25,7 +25,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
+import os, math
 import tensorflow as tf
 import semisup
 
@@ -34,41 +34,56 @@ from tensorflow.python.platform import flags
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_integer('sup_per_class', 10,
+flags.DEFINE_integer('sup_per_class', 500,
                      'Number of labeled samples used per class.')
 
 flags.DEFINE_integer('sup_seed', -1,
                      'Integer random seed used for labeled set selection.')
 
-flags.DEFINE_integer('sup_per_batch', 10,
-                     'Number of labeled samples per class per batch.')
+flags.DEFINE_integer('sup_batch_size', 64,
+                     'Number of labeled samples per batch.')
 
-flags.DEFINE_integer('unsup_batch_size', 100,
+flags.DEFINE_integer('unsup_batch_size', 0,
                      'Number of unlabeled samples per batch.')
 
-flags.DEFINE_integer('eval_interval', 500,
-                     'Number of steps between evaluations.')
+flags.DEFINE_integer('eval_interval', 1,
+                     'Number of epochs between evaluations.')
 
-flags.DEFINE_float('learning_rate', 1e-3, 'Initial learning rate.')
+flags.DEFINE_float('learning_rate', 0.1, 'Initial learning rate.')
 
-flags.DEFINE_float('decay_factor', 0.33, 'Learning rate decay factor.')
+flags.DEFINE_float('decay_factor', 0.1, 'Learning rate decay factor.')
 
-flags.DEFINE_float('decay_steps', 5000,
-                   'Learning rate decay interval in steps.')
+flags.DEFINE_float('decay_epochs', 150,
+                   'Learning rate decay interval in epochs.')
 
 flags.DEFINE_float('visit_weight', 1.0, 'Weight for visit loss.')
 
-flags.DEFINE_integer('max_steps', 20000, 'Number of training steps.')
+flags.DEFINE_integer('max_epochs', 300, 'Number of training epochs.')
 
-flags.DEFINE_string('logdir', '/tmp/semisup_mnist', 'Training log path.')
+flags.DEFINE_string('logdir', '/tmp/semisup_cifar', 'Training log path.')
 
-flags.DEFINE_string('dataset_dir', '/usr/stud/plapp/data/cifar-100-binary', 'Data path')
+flags.DEFINE_string('cifar', 'cifar10', 'Which cifar dataset to use')
+
+#flags.DEFINE_string('dataset_dir', '/usr/stud/plapp/data/cifar-100-binary', 'Data path')
+flags.DEFINE_string('dataset_dir', '/usr/stud/plapp/data/cifar-10-batches-bin', 'Data path')
 
 from tools import cifar100 as data
 
-NUM_LABELS = 100
+print(FLAGS.learning_rate, FLAGS.__flags) # print all flags (useful when logging)
+
 IMAGE_SHAPE = [32, 32, 3]
 NUM_TRAIN_IMAGES = 50000
+TEST_BATCH_SIZE = 200
+steps_per_epoch = math.ceil(NUM_TRAIN_IMAGES / FLAGS.sup_batch_size)
+
+if FLAGS.cifar == 'cifar10':
+  NUM_LABELS = 10
+  TRAIN_FILE = 'train/*'
+  TEST_FILE = 'test_batch.bin'
+else:
+  NUM_LABELS = 100
+  TRAIN_FILE = 'train.bin'
+  TEST_FILE = 'test.bin'
 
 
 def main(_):
@@ -80,40 +95,43 @@ def main(_):
 
   graph = tf.Graph()
   with graph.as_default():
-    model = semisup.SemisupModel(semisup.architectures.svhn_model, NUM_LABELS,
+    model = semisup.SemisupModel(semisup.architectures.densenet_model, NUM_LABELS,
                                  IMAGE_SHAPE)
 
     # Set up inputs.
-    train_sup, train_labels_sup = data.build_input('cifar100',
-                                                   os.path.join(FLAGS.dataset_dir, 'train.bin'),
-                                                   batch_size=FLAGS.sup_per_batch * NUM_LABELS,
+    train_sup, train_labels_sup = data.build_input(FLAGS.cifar,
+                                                   os.path.join(FLAGS.dataset_dir, TRAIN_FILE),
+                                                   batch_size=FLAGS.sup_batch_size,
                                                    mode='train',
                                                    subset_factor=unsup_multiplier)
 
-    train_unsup, train_labels_unsup = data.build_input('cifar100',
-                                                       os.path.join(FLAGS.dataset_dir, 'train.bin'),
+    if FLAGS.unsup_batch_size > 0:
+      train_unsup, train_labels_unsup = data.build_input(FLAGS.cifar,
+                                                       os.path.join(FLAGS.dataset_dir, TRAIN_FILE),
                                                        batch_size=FLAGS.unsup_batch_size,
                                                        mode='train')
 
-    test_images, test_labels = data.build_input('cifar100',
-                                                os.path.join(FLAGS.dataset_dir, 'test.bin'),
-                                                batch_size=FLAGS.sup_per_batch * NUM_LABELS,
+    test_images, test_labels = data.build_input(FLAGS.cifar,
+                                                os.path.join(FLAGS.dataset_dir, TEST_FILE),
+                                                batch_size=TEST_BATCH_SIZE,
                                                 mode='test')
 
     # Compute embeddings and logits.
     t_sup_emb = model.image_to_embedding(train_sup)
-    t_unsup_emb = model.image_to_embedding(train_unsup)
     t_sup_logit = model.embedding_to_logit(t_sup_emb)
 
     # Add losses.
-    model.add_semisup_loss(
-        t_sup_emb, t_unsup_emb, train_labels_sup, visit_weight=FLAGS.visit_weight)
+    if FLAGS.unsup_batch_size > 0:
+      t_unsup_emb = model.image_to_embedding(train_unsup)
+      model.add_semisup_loss(
+            t_sup_emb, t_unsup_emb, train_labels_sup, visit_weight=FLAGS.visit_weight)
+
     model.add_logit_loss(t_sup_logit, train_labels_sup)
 
     t_learning_rate = tf.train.exponential_decay(
         FLAGS.learning_rate,
         model.step,
-        FLAGS.decay_steps,
+        FLAGS.decay_epochs * steps_per_epoch,
         FLAGS.decay_factor,
         staircase=True)
     train_op = model.create_train_op(t_learning_rate)
@@ -128,17 +146,32 @@ def main(_):
 
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+    last_epoch = -1
 
-    for step in range(FLAGS.max_steps):
-      _, summaries = sess.run([train_op, summary_op])
-      if (step + 1) % FLAGS.eval_interval == 0 or step == 99:
-        print('Step: %d' % step)
-        test_pred = model.classify(test_images).argmax(-1)
-        conf_mtx = semisup.confusion_matrix(test_labels, test_pred, NUM_LABELS)
-        test_err = (test_labels != test_pred).mean() * 100
+    for step in range(FLAGS.max_epochs * int(steps_per_epoch)):
+      _, summaries, tl = sess.run([train_op, summary_op, model.train_loss])
+
+      epoch = math.floor(step / steps_per_epoch)
+      if (epoch > 0 and epoch % FLAGS.eval_interval == 0) or epoch == 1:
+        if epoch == last_epoch: #don't log twice for same epoch
+          continue
+
+        last_epoch = epoch
+        num_total_batches = 10000 / TEST_BATCH_SIZE
+        print('Epoch: %d' % epoch)
+
+        t_imgs, t_lbls = model.get_images(test_images, test_labels, sess, num_total_batches)
+        test_pred = model.classify(t_imgs).argmax(-1)
+        conf_mtx = semisup.confusion_matrix(t_lbls, test_pred, NUM_LABELS)
+        test_err = (t_lbls != test_pred).mean() * 100
         print(conf_mtx)
         print('Test error: %.2f %%' % test_err)
         print()
+
+        t_imgs, t_lbls = model.get_images(train_sup, train_labels_sup, sess, num_total_batches)
+        train_pred = model.classify(t_imgs).argmax(-1)
+        train_err = (t_lbls != train_pred).mean() * 100
+        print('Train error: %.2f %%' % train_err)
 
         test_summary = tf.Summary(
             value=[tf.Summary.Value(

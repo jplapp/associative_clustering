@@ -27,6 +27,39 @@ from __future__ import print_function
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 
+from semisup.densenet import DenseNet
+
+def densenet_model(inputs,
+               is_training=True,
+               emb_size=128,
+               l2_weight=1e-4,
+               img_shape=None,
+               new_shape=None,
+               image_summary=False,
+               batch_norm_decay=0.99):  # pylint: disable=unused-argument
+    """Construct the image-to-embedding vector model."""
+    inputs = tf.cast(inputs, tf.float32)
+
+
+    if image_summary:
+        tf.summary.image('Inputs', inputs, max_outputs=3)
+
+    print(inputs.shape)
+    shape = (inputs.shape[1],inputs.shape[2],inputs.shape[3])
+    densenet = DenseNet(data_shape=shape, n_classes=10, model_type='DenseNet',
+                        growth_rate=12, depth=40, is_training=is_training)
+
+    emb = densenet.build_embeddings(inputs)
+
+    #with slim.arg_scope(
+    #        [slim.fully_connected],
+    #        activation_fn=tf.nn.elu,
+    #        weights_regularizer=slim.l2_regularizer(l2_weight),
+    #        normalizer_fn=None):
+
+    #    emb = slim.fully_connected(emb, emb_size, scope='fc1')
+    return emb
+
 
 def svhn_model(inputs,
                is_training=True,
