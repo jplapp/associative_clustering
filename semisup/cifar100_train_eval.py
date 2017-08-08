@@ -160,7 +160,7 @@ def main(_):
         num_total_batches = 10000 / TEST_BATCH_SIZE
         print('Epoch: %d' % epoch)
 
-        t_imgs, t_lbls = model.get_images(test_images, test_labels, sess, num_total_batches)
+        t_imgs, t_lbls = model.get_images(test_images, test_labels, num_total_batches, sess)
         test_pred = model.classify(t_imgs).argmax(-1)
         conf_mtx = semisup.confusion_matrix(t_lbls, test_pred, NUM_LABELS)
         test_err = (t_lbls != test_pred).mean() * 100
@@ -168,7 +168,7 @@ def main(_):
         print('Test error: %.2f %%' % test_err)
         print()
 
-        t_imgs, t_lbls = model.get_images(train_sup, train_labels_sup, sess, num_total_batches)
+        t_imgs, t_lbls = model.get_images(train_sup, train_labels_sup, num_total_batches, sess)
         train_pred = model.classify(t_imgs).argmax(-1)
         train_err = (t_lbls != train_pred).mean() * 100
         print('Train error: %.2f %%' % train_err)

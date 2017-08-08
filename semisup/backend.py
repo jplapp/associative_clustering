@@ -258,8 +258,6 @@ class SemisupModel(object):
     tf.summary.scalar('Loss_Total_Avg', self.train_loss_average)
     tf.summary.scalar('Loss_Total', self.train_loss)
 
-    tf.Print(self.train_loss, [self.train_loss])
-
     if self.optimizer == 'sgd':
       trainer = tf.train.MomentumOptimizer(
             learning_rate, 0.9, use_nesterov=False)
