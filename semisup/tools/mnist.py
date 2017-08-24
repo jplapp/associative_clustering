@@ -26,7 +26,7 @@ from __future__ import print_function
 
 import gzip
 import numpy as np
-import data_dirs
+from tools import data_dirs
 
 DATADIR = data_dirs.mnist
 
@@ -56,7 +56,7 @@ def _read32(bytestream):
 def extract_images(filename):
   """Extract the images into a 4D uint8 numpy array [index, y, x, depth]."""
   print('Extracting', filename)
-  with open(filename, 'r') as f, gzip.GzipFile(fileobj=f) as bytestream:
+  with open(filename, 'r+b') as f, gzip.GzipFile(fileobj=f) as bytestream:
     magic = _read32(bytestream)
     if magic != 2051:
       raise ValueError('Invalid magic number %d in MNIST image file: %s' %
@@ -73,7 +73,7 @@ def extract_images(filename):
 def extract_labels(filename):
   """Extract the labels into a 1D uint8 numpy array [index]."""
   print('Extracting', filename)
-  with open(filename, 'r') as f, gzip.GzipFile(fileobj=f) as bytestream:
+  with open(filename, 'r+b') as f, gzip.GzipFile(fileobj=f) as bytestream:
     magic = _read32(bytestream)
     if magic != 2049:
       raise ValueError('Invalid magic number %d in MNIST label file: %s' %

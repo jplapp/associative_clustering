@@ -37,6 +37,8 @@ def create_input(input_images, input_labels, batch_size):
   Returns:
     A list containing the images and labels batches.
   """
+  if batch_size == -1:
+    batch_size = input_labels.shape[0]
   if input_labels is not None:
     image, label = tf.train.slice_input_producer([input_images, input_labels])
     return tf.train.batch([image, label], batch_size=batch_size)
@@ -79,7 +81,8 @@ def sample_by_label(images, labels, n_per_label, num_labels, seed=None):
     if n_per_label == -1:  # use all available labeled data
       res.append(a)
     else:  # use randomly chosen subset
-      res.append(a[rng.choice(len(a), n_per_label, False)])
+      inds = rng.choice(len(a), n_per_label, False)
+      res.append(a[inds])
   return res
 
 
@@ -103,10 +106,23 @@ def confusion_matrix(labels, predictions, num_labels):
   return np.vstack(rows)
 
 
+def softmax(x):
+  maxes = np.amax(x, axis=1)
+  maxes = maxes.reshape(maxes.shape[0], 1)
+  e = np.exp(x - maxes)
+  dist = e / np.sum(e, axis=1).reshape(maxes.shape[0], 1)
+  return dist
+
+def one_hot(a, depth):
+  b = np.zeros((a.size, depth))
+  b[np.arange(a.size), a] = 1
+  return b
+
+
 class SemisupModel(object):
   """Helper class for setting up semi-supervised training."""
 
-  def __init__(self, model_func, num_labels, input_shape, test_in=None, optimizer='sgd'):
+  def __init__(self, model_func, num_labels, input_shape, test_in=None, optimizer='adam'):
     """Initialize SemisupModel class.
 
     Creates an evaluation graph for the provided model_func.
@@ -176,7 +192,7 @@ class SemisupModel(object):
     p_ba = tf.nn.softmax(tf.transpose(match_ab), name='p_ba')
     p_aba = tf.matmul(p_ab, p_ba, name='p_aba')
 
-    self.create_walk_statistics(p_aba, equality_matrix)
+    #self.create_walk_statistics(p_aba, equality_matrix)
     
     loss_aba = tf.losses.softmax_cross_entropy(
         p_target,
@@ -259,14 +275,14 @@ class SemisupModel(object):
     tf.summary.scalar('Loss_Total', self.train_loss)
 
     if self.optimizer == 'sgd':
-      trainer = tf.train.MomentumOptimizer(
+      self.trainer = tf.train.MomentumOptimizer(
             learning_rate, 0.9, use_nesterov=False)
     elif self.optimizer == 'adam':
-      trainer = tf.train.AdamOptimizer(learning_rate)
+      self.trainer = tf.train.AdamOptimizer(learning_rate)
     else:
       print('unrecognized optimizer')
 
-    self.train_op = slim.learning.create_train_op(self.train_loss, trainer)
+    self.train_op = slim.learning.create_train_op(self.train_loss, self.trainer)
     return self.train_op
 
   def calc_embedding(self, images, endpoint):
@@ -285,7 +301,7 @@ class SemisupModel(object):
     imgs = []
     lbls = []
 
-    for i in range(num_batches):
+    for i in range(int(num_batches)):
       i_, l_ = sess.run([img_queue, lbl_queue])
       imgs.append(i_)
       lbls.append(l_)
@@ -294,4 +310,106 @@ class SemisupModel(object):
     labels = np.hstack(lbls)
 
     return images, labels
+
+  def classify_using_embeddings(self, sup_imgs, sup_lbls, test_images, test_labels, sess):
+
+    if sup_imgs.shape:  # convert tensor to array
+      sup_imgs, sup_lbls = self.get_images(sup_imgs, sup_lbls, 1, sess)
+
+    sup_embs = self.calc_embedding(sup_imgs, self.test_emb)
+    test_embs = self.calc_embedding(test_images, self.test_emb)
+
+    match_ab = np.dot(sup_embs, np.transpose(test_embs))
+    p_ba = softmax(np.transpose(match_ab))
+
+    pred_ids = np.dot(p_ba, one_hot(sup_lbls, depth=self.num_labels))
+    preds = np.argmax(pred_ids, axis=1)
+
+    return np.mean(preds == test_labels)
+
+  def propose_samples(self, sup_imgs, sup_lbls, train_images, train_labels, sess, n_samples=1):
+    #if sup_imgs.shape:  # convert tensor to array
+    #  sup_imgs, sup_lbls = self.get_images(sup_imgs, sup_lbls, 1, sess)
+
+    sup_embs = self.calc_embedding(sup_imgs, self.test_emb)
+    train_embs = self.calc_embedding(train_images, self.test_emb)
+
+    match_ab = np.dot(sup_embs, np.transpose(train_embs))
+    p_ba = softmax(np.transpose(match_ab))
+
+
+    # calculate sample confidence: sample confidence + confidence of close-by_samples
+    sample_conf = np.var(p_ba, axis=1)
+    thresh = 0.01
+    unconf_sample_indices = np.where(sample_conf < thresh)[0][:10000]
+    print(unconf_sample_indices.shape)
+    unconf_train_embs = train_embs[unconf_sample_indices]
+    # print(unconf_train_embs.shape, unconf_sample_indices)
+
+    # distances to other unlabeled samples
+    # not normalized
+    p_bb = np.dot(unconf_train_embs, np.transpose(unconf_train_embs))
+
+    # ignore faraway samples
+    print('p', np.percentile(p_bb, 95))
+    p_bb[p_bb < np.percentile(p_bb, 95)] = 0
+    p_bb[p_bb > 1] = 1
+
+    region_conf = np.dot(p_bb, sample_conf[unconf_sample_indices])
+
+    # indices = np.argpartition(region_conf, kth=n_samples)[:n_samples]
+    indices = np.argsort(-region_conf)[:n_samples]
+    print('ind', indices, unconf_sample_indices.shape)
+    or_indices = unconf_sample_indices[indices]
+    print('indices', or_indices)
+
+    #for i in indices:
+      #show_sample(i)
+    #  print('ii', i, train_labels[i], region_conf[i], sum(p_bb[i, :]))
+
+    return or_indices
+
+
+  def propose_samples_random(self, sup_imgs, sup_lbls, train_images, train_labels, sess, n_samples=1):
+    rng = np.random.RandomState()
+    indices = rng.choice(len(train_images), n_samples, False)
+
+    print(indices)
+    return indices
+
+
+  def propose_samples_min_var_logit(self, sup_imgs, sup_lbls, train_images, train_labels, sess, n_samples=1):
+    embs = self.calc_embedding(train_images, self.test_logit)
+
+    var = np.var(embs, axis = 1)
+    indices = np.argpartition(var, kth=n_samples)[:n_samples]
+    print('indices', indices, var[indices])
+    return indices
+
+
+  def propose_samples_random_classes(self, sup_imgs, sup_lbls, train_images, train_labels, sess, n_samples=1):
+    """
+    propose samples randomly, but ensure that the class distribution stays equal
+    this then approaches training with more samples
+    in the context of active learning should be considered 'cheating', as we use the class label info
+     of all training samples to pick a sample
+    """
+    label_count = np.bincount(np.asarray(sup_lbls, np.int64), minlength=self.num_labels)
+
+    target_per_class = 4
+    p = np.ones(self.num_labels) * target_per_class - label_count
+    p = p / np.sum(p)
+
+    print('p',p)
+    rng = np.random.RandomState()
+    classes = rng.choice(self.num_labels, n_samples, False, p)
+
+    indices = []
+    for i in classes:
+      inds_from_class = np.where(train_labels == i)[0]
+      print(rng.choice(inds_from_class, 1, False))
+      indices = indices + [rng.choice(inds_from_class, 1, False)[0]]
+
+    print(indices)
+    return indices
 

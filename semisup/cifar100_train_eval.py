@@ -34,7 +34,7 @@ from tensorflow.python.platform import flags
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_integer('sup_per_class', 500,
+flags.DEFINE_integer('sup_per_class', 5000,
                      'Number of labeled samples used per class.')
 
 flags.DEFINE_integer('sup_seed', -1,
@@ -152,7 +152,7 @@ def main(_):
       _, summaries, tl = sess.run([train_op, summary_op, model.train_loss])
 
       epoch = math.floor(step / steps_per_epoch)
-      if (epoch > 0 and epoch % FLAGS.eval_interval == 0) or epoch == 1:
+      if (epoch >= 0 and epoch % FLAGS.eval_interval == 0) or epoch == 1:
         if epoch == last_epoch: #don't log twice for same epoch
           continue
 

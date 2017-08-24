@@ -40,13 +40,12 @@ def densenet_model(inputs,
     """Construct the image-to-embedding vector model."""
     inputs = tf.cast(inputs, tf.float32)
 
-
     if image_summary:
         tf.summary.image('Inputs', inputs, max_outputs=3)
 
     print(inputs.shape)
     shape = (inputs.shape[1],inputs.shape[2],inputs.shape[3])
-    densenet = DenseNet(data_shape=shape, n_classes=10, model_type='DenseNet',
+    densenet = DenseNet(data_shape=shape, n_classes=10, model_type='DenseNet', keep_prob=1,
                         growth_rate=12, depth=40, is_training=is_training)
 
     emb = densenet.build_embeddings(inputs)
