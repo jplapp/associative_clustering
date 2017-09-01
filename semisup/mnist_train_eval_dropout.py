@@ -56,13 +56,13 @@ flags.DEFINE_float('decay_factor', 0.33, 'Learning rate decay factor.')
 flags.DEFINE_float('decay_steps', 20000,
                    'Learning rate decay interval in steps.')
 
-flags.DEFINE_float('visit_weight', 0.1, 'Weight for visit loss.')
-flags.DEFINE_float('walker_weight', 5, 'Weight for walker loss.')
-flags.DEFINE_float('logit_weight', 0.4, 'Weight for logit loss.')
+flags.DEFINE_float('visit_weight', 1, 'Weight for visit loss.')
+flags.DEFINE_float('walker_weight', 1, 'Weight for walker loss.')
+flags.DEFINE_float('logit_weight', 0.5, 'Weight for logit loss.')
 flags.DEFINE_float('l1_weight', 0.001, 'Weight for embedding l1 regularization.')
 
-flags.DEFINE_integer('max_steps', 8000, 'Number of training steps.')
-flags.DEFINE_integer('warmup_steps', 7000, 'Number of warmup steps.')
+flags.DEFINE_integer('max_steps', 7000, 'Number of training steps.')
+flags.DEFINE_integer('warmup_steps', 3000, 'Number of warmup steps.')
 
 flags.DEFINE_string('logdir', '/tmp/semisup_mnist', 'Training log path.')
 
@@ -81,7 +81,7 @@ IMAGE_SHAPE = mnist_tools.IMAGE_SHAPE
 
 
 def main(_):
-  FLAGS.emb_size = 64
+  FLAGS.emb_size = 128
   optimizer = 'adam'
 
   train_images, train_labels = mnist_tools.get_data('train')
@@ -139,8 +139,6 @@ def main(_):
 
   sess = tf.InteractiveSession(graph=graph)
 
-  unsup_it_2 = semisup.create_input(train_images, train_labels, batch_size=100)
-
   unsup_images_iterator = semisup.create_input(train_images, train_labels,
                                                FLAGS.unsup_batch_size)
   tf.global_variables_initializer().run()
@@ -148,18 +146,31 @@ def main(_):
   coord = tf.train.Coordinator()
   threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
-  for step in range(FLAGS.warmup_steps + 8000):
+  use_new_visit_loss = True
+  for step in range(FLAGS.max_steps):
     unsup_images, _ = sess.run(unsup_images_iterator)
-    _, summaries, train_loss = sess.run([train_op, summary_op, model.train_loss], {
-      t_unsup_images: unsup_images,
-      walker_weight: FLAGS.walker_weight,
-      visit_weight: 0.3 + apply_envelope("lin", step, 1, FLAGS.warmup_steps, 1000),
-      t_logit_weight: 0.3 + apply_envelope("lin", step, 0.2, FLAGS.warmup_steps, 0),
-      t_l1_weight: FLAGS.l1_weight,
-      class_equal_weight: apply_envelope("lin", step, 0.2, FLAGS.warmup_steps, 0) +
-                          apply_envelope("lin", step, 1, FLAGS.warmup_steps, 5000),
-      t_learning_rate: 1e-5 + apply_envelope("log", step, 2e-4, FLAGS.warmup_steps, 0)
-    })
+
+    if use_new_visit_loss:
+      _, summaries, train_loss = sess.run([train_op, summary_op, model.train_loss], {
+        t_unsup_images: unsup_images,
+        walker_weight: FLAGS.walker_weight,
+        visit_weight: 0.3 + apply_envelope("lin", step, 0.7, FLAGS.warmup_steps, 0)
+                      - apply_envelope("lin", step, FLAGS.visit_weight, 2000, FLAGS.warmup_steps),
+        t_logit_weight: FLAGS.logit_weight,
+        t_l1_weight: FLAGS.l1_weight,
+        class_equal_weight: apply_envelope("lin", step, FLAGS.visit_weight, 2000, FLAGS.warmup_steps),
+        t_learning_rate: 5e-5 + apply_envelope("log", step, FLAGS.learning_rate, FLAGS.warmup_steps, 0)
+      })
+    else:
+      _, summaries, train_loss = sess.run([train_op, summary_op, model.train_loss], {
+        t_unsup_images: unsup_images,
+        walker_weight: FLAGS.walker_weight,
+        visit_weight: 0,
+        class_equal_weight: 0.3 + apply_envelope("lin", step, 0.7, FLAGS.warmup_steps, 0),
+        t_logit_weight: FLAGS.logit_weight,
+        t_l1_weight: FLAGS.l1_weight,
+        t_learning_rate: 5e-5 + apply_envelope("log", step, FLAGS.learning_rate, FLAGS.warmup_steps, 0)
+      })
 
     if (step + 1) % FLAGS.eval_interval == 0 or step == 99:
       print('Step: %d' % step)
@@ -177,7 +188,6 @@ def main(_):
 
       summary_writer.add_summary(summaries, step)
       summary_writer.add_summary(test_summary, step)
-
 
 
 if __name__ == '__main__':

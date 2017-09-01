@@ -249,7 +249,7 @@ class SemisupModel(object):
     equality_matrix = tf.equal(tf.reshape(labels, [-1, 1]), labels)
     equality_matrix = tf.cast(equality_matrix, tf.float32)
     p_target = (equality_matrix / tf.reduce_sum(
-        equality_matrix, [1], keep_dims=True)) * 2
+        equality_matrix, [1], keep_dims=True))
 
     match_ab = tf.matmul(a, b, transpose_b=True, name='match_ab')
     p_ab = tf.nn.softmax(match_ab, name='p_ab')
