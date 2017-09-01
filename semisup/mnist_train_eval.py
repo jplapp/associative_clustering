@@ -26,6 +26,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+tf.logging.set_verbosity(tf.logging.ERROR)
 import semisup
 
 from tensorflow.python.platform import app
@@ -45,7 +46,7 @@ flags.DEFINE_integer('sup_per_batch', 2,
 flags.DEFINE_integer('unsup_batch_size', 100,
                      'Number of unlabeled samples per batch.')
 
-flags.DEFINE_integer('eval_interval', 10000,
+flags.DEFINE_integer('eval_interval', 500,
                      'Number of steps between evaluations.')
 
 flags.DEFINE_float('learning_rate', 1e-3, 'Initial learning rate.')
@@ -57,13 +58,18 @@ flags.DEFINE_float('decay_steps', 20000,
 
 flags.DEFINE_float('visit_weight', 1.0, 'Weight for visit loss.')
 
-flags.DEFINE_integer('max_steps', 20000, 'Number of training steps.')
+flags.DEFINE_float('walker_weight', 1.0, 'Weight for walker loss.')
+
+flags.DEFINE_integer('max_steps', 10000, 'Number of training steps.')
 
 flags.DEFINE_string('logdir', '/tmp/semisup_mnist', 'Training log path.')
+
+flags.DEFINE_bool('semisup', True, 'Add unsupervised samples')
 
 print(FLAGS.learning_rate, FLAGS.__flags) # print all flags (useful when logging)
 
 from tools import mnist as mnist_tools
+import numpy as np
 
 NUM_LABELS = mnist_tools.NUM_LABELS
 IMAGE_SHAPE = mnist_tools.IMAGE_SHAPE
@@ -74,11 +80,11 @@ def main(_):
   test_images, test_labels = mnist_tools.get_data('test')
 
   # Sample labeled training subset.
-  seed = FLAGS.sup_seed if FLAGS.sup_seed != -1 else None
+  seed = FLAGS.sup_seed if FLAGS.sup_seed != -1 else np.random.randint(0,1000)
+  print('Seed:', seed)
   sup_by_label = semisup.sample_by_label(train_images, train_labels,
                                          FLAGS.sup_per_class, NUM_LABELS, seed)
 
-  import numpy as np
   if 0:
 
     indices = [374, 2507, 9755, 12953, 16507, 16873, 23474,
@@ -89,6 +95,11 @@ def main(_):
             23909, 30280, 35070, 49603, 50106, 51171, 51726, 51805, 55205, 57251, 57296, 57779, 59154] + \
                [9924, 34058, 53476, 15715, 6428, 33598, 33464, 41753, 21250, 26389, 12950,
                 12464, 3795, 6761, 5638, 3952, 8300, 5632, 1475, 1875]
+    indices = [374, 2507, 9755, 12953, 16507, 16873, 23474,
+            23909, 30280, 35070, 49603, 50106, 51171, 51726, 51805, 55205, 57251, 57296, 57779, 59154] + \
+              [935, 4066, 49041, 5195, 31345, 26613, 14866, 19988, 13760, 10438, 50212,
+            15165, 36730, 48975, 23104, 19148, 20363, 28530, 22053, 53693]
+
     sup_by_label = [ [] for i in range(NUM_LABELS)]
     for ind in indices:
       i = train_labels[ind]
@@ -100,7 +111,7 @@ def main(_):
     sup_by_label = np.asarray(sup_by_label)
 
 
-  add_random_samples = 20
+  add_random_samples = 0
   if add_random_samples > 0:
     rng = np.random.RandomState()
     indices = rng.choice(len(train_images), add_random_samples, False)
@@ -108,6 +119,7 @@ def main(_):
     for i in indices:
       l = train_labels[i]
       sup_by_label[l] = np.vstack([sup_by_label[l], [train_images[i]]])
+      print(l)
 
 
   graph = tf.Graph()
@@ -116,19 +128,21 @@ def main(_):
                                  IMAGE_SHAPE)
 
     # Set up inputs.
-    t_unsup_images, _ = semisup.create_input(train_images, train_labels,
-                                             FLAGS.unsup_batch_size)
     t_sup_images, t_sup_labels = semisup.create_per_class_inputs(
         sup_by_label, FLAGS.sup_per_batch)
 
     # Compute embeddings and logits.
     t_sup_emb = model.image_to_embedding(t_sup_images)
-    t_unsup_emb = model.image_to_embedding(t_unsup_images)
     t_sup_logit = model.embedding_to_logit(t_sup_emb)
 
     # Add losses.
-    model.add_semisup_loss(
-        t_sup_emb, t_unsup_emb, t_sup_labels, visit_weight=FLAGS.visit_weight)
+    if FLAGS.semisup:
+      t_unsup_images, _ = semisup.create_input(train_images, train_labels,
+                                               FLAGS.unsup_batch_size)
+      t_unsup_emb = model.image_to_embedding(t_unsup_images)
+      model.add_semisup_loss(
+        t_sup_emb, t_unsup_emb, t_sup_labels,
+        walker_weight=FLAGS.walker_weight, visit_weight=FLAGS.visit_weight)
     model.add_logit_loss(t_sup_logit, t_sup_labels)
 
     t_learning_rate = tf.train.exponential_decay(

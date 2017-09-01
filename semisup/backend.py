@@ -26,6 +26,21 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 
 
+import matplotlib.pyplot as plt
+def show_sample(id):
+  show_sample_img(train_images[id, :])
+
+def show_sample_img(img):
+  plt.imshow(img.reshape(28, 28), cmap='gray')
+  plt.show()
+
+def show_sample_img_inline(imgs):
+  f, axarr = plt.subplots(1, max(len(imgs),2))
+  for ind, img in enumerate(imgs):
+    axarr[ind].imshow(img.reshape(28, 28), cmap='gray')
+  plt.show()
+
+
 def create_input(input_images, input_labels, batch_size):
   """Create preloaded data batch inputs.
 
@@ -118,11 +133,58 @@ def one_hot(a, depth):
   b[np.arange(a.size), a] = 1
   return b
 
+def logistic_growth(current_step, target, steps):
+  assert target > 0., 'Target value must be positive.'
+  alpha = 5. / steps
+  return target * (np.tanh(alpha * (current_step - steps / 2.)) + 1.) / 2.
+
+def apply_envelope(type, step, final_weight, growing_steps, delay):
+  assert growing_steps > 0, "Growing steps for envelope must be > 0."
+  step = step - delay
+  final_step = growing_steps + delay
+
+  if type is None:
+    value = final_weight
+
+  elif type in ['sigmoid', 'sigmoidal', 'logistic', 'log']:
+    value = logistic_growth(step, final_weight, final_step)
+
+  elif type in ['linear', 'lin']:
+    m = float(final_weight) / (
+      growing_steps) if not growing_steps == 0.0 else 999.
+    value = m * step
+  else:
+    raise NameError('Invalid type: ' + str(type))
+
+  return np.clip(value, 0., final_weight)
+
+from tensorflow.python.framework import ops
+LOSSES_COLLECTION = ops.GraphKeys.LOSSES
+
+
+def l1_loss(tensor, weight, scope=None):
+  """Define a L1Loss, useful for regularize, i.e. lasso.
+  Args:
+    tensor: tensor to regularize.
+    weight: tensor: scale the loss by this factor.
+    scope: Optional scope for name_scope.
+  Returns:
+    the L1 loss op.
+  """
+  with tf.name_scope(scope, 'L1Loss', [tensor]):
+      #weight = tf.convert_to_tensor(weight,
+      #                              dtype=tensor.dtype.base_dtype,
+      #                              name='loss_weight')
+      loss = tf.multiply(weight, tf.reduce_sum(tf.abs(tensor)), name='value')
+      tf.add_to_collection(LOSSES_COLLECTION, loss)
+  return loss
+
+
 
 class SemisupModel(object):
   """Helper class for setting up semi-supervised training."""
 
-  def __init__(self, model_func, num_labels, input_shape, test_in=None, optimizer='adam'):
+  def __init__(self, model_func, num_labels, input_shape, test_in=None, optimizer='adam', emb_size=64, dropout_keep_prob=1):
     """Initialize SemisupModel class.
 
     Creates an evaluation graph for the provided model_func.
@@ -140,11 +202,13 @@ class SemisupModel(object):
     self.num_labels = num_labels
     self.step = slim.get_or_create_global_step()
     self.ema = tf.train.ExponentialMovingAverage(0.99, self.step)
+    self.emb_size = emb_size
 
     self.test_batch_size = 100
 
     self.model_func = model_func
     self.optimizer = optimizer
+    self.dropout_keep_prob = dropout_keep_prob
 
     if test_in is not None:
       self.test_in = test_in
@@ -157,7 +221,7 @@ class SemisupModel(object):
   def image_to_embedding(self, images, is_training=True):
     """Create a graph, transforming images into embedding vectors."""
     with tf.variable_scope('net', reuse=is_training):
-      self.model = self.model_func(images, is_training=is_training)
+      self.model = self.model_func(images, is_training=is_training, emb_size=self.emb_size, dropout_keep_prob=self.dropout_keep_prob)
       return self.model
 
   def embedding_to_logit(self, embedding, is_training=True):
@@ -169,10 +233,10 @@ class SemisupModel(object):
           activation_fn=None,
           weights_regularizer=slim.l2_regularizer(1e-4))
 
-  def add_semisup_loss(self, a, b, labels, walker_weight=1.0, visit_weight=1.0):
+  def add_semisup_loss(self, a, b, labels, walker_weight=1.0, visit_weight=1.0, class_equal_weight=None):
     """Add semi-supervised classification loss to the model.
 
-    The loss constist of two terms: "walker" and "visit".
+    The loss consists of two terms: "walker" and "visit".
 
     Args:
       a: [N, emb_size] tensor with supervised embedding vectors.
@@ -185,7 +249,7 @@ class SemisupModel(object):
     equality_matrix = tf.equal(tf.reshape(labels, [-1, 1]), labels)
     equality_matrix = tf.cast(equality_matrix, tf.float32)
     p_target = (equality_matrix / tf.reduce_sum(
-        equality_matrix, [1], keep_dims=True))
+        equality_matrix, [1], keep_dims=True)) * 2
 
     match_ab = tf.matmul(a, b, transpose_b=True, name='match_ab')
     p_ab = tf.nn.softmax(match_ab, name='p_ab')
@@ -199,7 +263,11 @@ class SemisupModel(object):
         tf.log(1e-8 + p_aba),
         weights=walker_weight,
         scope='loss_aba')
-    self.add_visit_loss(p_ab, visit_weight)
+
+    if class_equal_weight is not None:
+      self.add_visit_loss(p_ab, class_equal_weight)
+
+    self.add_visit_loss_bab(p_ab, p_ba, visit_weight)
 
     tf.summary.scalar('Loss_aba', loss_aba)
 
@@ -221,6 +289,26 @@ class SemisupModel(object):
         scope='loss_visit')
 
     tf.summary.scalar('Loss_Visit', visit_loss)
+
+  def add_visit_loss_bab(self, p_ab, p_ba, weight=1.0):
+    """Add the "visit" loss to the model.
+
+    Args:
+      p_ab, p_ba
+      weight: Loss weight.
+    """
+    p_bab = tf.matmul(p_ba, p_ab, name='p_bab')
+
+    visit_probability = tf.reduce_mean(p_bab, [0], name='visit_prob_bab', keep_dims=True)
+
+    t_nb = tf.shape(p_bab)[1]
+    visit_loss = tf.losses.softmax_cross_entropy(
+        tf.fill([1, t_nb], 1.0 / tf.cast(t_nb, tf.float32)),
+        tf.log(1e-8 + visit_probability),
+        weights=weight,
+        scope='loss_visit_bab')
+
+    tf.summary.scalar('Loss_Visit_bab', visit_loss)
 
   def add_logit_loss(self, logits, labels, weight=1.0, smoothing=0.0):
     """Add supervised classification loss to the model."""
@@ -261,11 +349,17 @@ class SemisupModel(object):
         self.ema.average(variable), name=variable.name[:-2] + '_avg')
     return average_variable
 
+  def add_emb_regularization(self, embs, weight):
+    """weight should be a tensor"""
+    l1_loss(embs, weight)
+
   def create_train_op(self, learning_rate):
     """Create and return training operation."""
 
     slim.model_analyzer.analyze_vars(
         tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES), print_info=True)
+
+    print(tf.losses.get_losses())
 
     self.train_loss = tf.losses.get_total_loss()
     self.train_loss_average = self.add_average(self.train_loss)
@@ -327,67 +421,90 @@ class SemisupModel(object):
 
     return np.mean(preds == test_labels)
 
-  def propose_samples(self, sup_imgs, sup_lbls, train_images, train_labels, sess, n_samples=1):
-    #if sup_imgs.shape:  # convert tensor to array
-    #  sup_imgs, sup_lbls = self.get_images(sup_imgs, sup_lbls, 1, sess)
-
+  def propose_samples(self, sup_imgs, sup_lbls, train_images, train_labels, sess, n_samples=1, vis=False):
     sup_embs = self.calc_embedding(sup_imgs, self.test_emb)
     train_embs = self.calc_embedding(train_images, self.test_emb)
 
     match_ab = np.dot(sup_embs, np.transpose(train_embs))
     p_ba = softmax(np.transpose(match_ab))
 
+    # add values from a that share class
+    preds = np.dot(p_ba, one_hot(np.asarray(sup_lbls, np.int64), depth=self.num_labels))
 
     # calculate sample confidence: sample confidence + confidence of close-by_samples
-    sample_conf = np.var(p_ba, axis=1)
-    thresh = 0.01
-    unconf_sample_indices = np.where(sample_conf < thresh)[0][:10000]
+    sample_conf = np.var(preds, axis=1)
+    conf_thresh = np.percentile(sample_conf, 5)
+    print('th', conf_thresh)
+    unconf_sample_indices = np.where(sample_conf < conf_thresh)[0][:10000]
     print(unconf_sample_indices.shape)
+    #todo is empty
     unconf_train_embs = train_embs[unconf_sample_indices]
-    # print(unconf_train_embs.shape, unconf_sample_indices)
 
     # distances to other unlabeled samples
     # not normalized
     p_bb = np.dot(unconf_train_embs, np.transpose(unconf_train_embs))
-
+    p_bb_or = p_bb.copy()
     # ignore faraway samples
-    print('p', np.percentile(p_bb, 95))
-    p_bb[p_bb < np.percentile(p_bb, 95)] = 0
+    print('p', np.percentile(p_bb, 90))
+    p_bb[p_bb < np.percentile(p_bb, 90)] = 0
     p_bb[p_bb > 1] = 1
 
-    region_conf = np.dot(p_bb, sample_conf[unconf_sample_indices])
+    # add up the 'inconfidence' of all close samples
+    region_conf = np.dot(p_bb, conf_thresh - sample_conf[unconf_sample_indices])
 
     # indices = np.argpartition(region_conf, kth=n_samples)[:n_samples]
-    indices = np.argsort(-region_conf)[:n_samples]
-    print('ind', indices, unconf_sample_indices.shape)
+    indices = np.argsort(-region_conf)[:n_samples]  # sort descending
     or_indices = unconf_sample_indices[indices]
-    print('indices', or_indices)
 
-    #for i in indices:
-      #show_sample(i)
-    #  print('ii', i, train_labels[i], region_conf[i], sum(p_bb[i, :]))
+    if vis:
+      for i in or_indices:
+          p_bb_ind = np.where(unconf_sample_indices == i)[0]
+          show_sample_img(train_images[i])
+          print('existing samples in training set from same class')
+          inds = np.where(sup_lbls == train_labels[i])[0]
+          imgs = sup_imgs[inds]
+          show_sample_img_inline(imgs)
+
+          print(preds[i, :])
+          print(p_ba[i, :])
+          print('close, also unconfident samples')
+          uinds = np.argsort(-p_bb_or[p_bb_ind,:])[0,:10]
+          orinds = unconf_sample_indices[uinds]
+          show_sample_img_inline(train_images[orinds])
 
     return or_indices
 
 
-  def propose_samples_random(self, sup_imgs, sup_lbls, train_images, train_labels, sess, n_samples=1):
+  def propose_samples_random(self, sup_imgs, sup_lbls, train_images, train_labels, sess, n_samples=1, vis=False):
     rng = np.random.RandomState()
     indices = rng.choice(len(train_images), n_samples, False)
 
-    print(indices)
+    if vis:
+      for i in indices:
+          show_sample_img(train_images[i])
+          print('existing samples in training set from same class')
+          inds = np.where(sup_lbls == train_labels[i])
+          show_sample_img_inline(sup_imgs[inds])
     return indices
 
 
-  def propose_samples_min_var_logit(self, sup_imgs, sup_lbls, train_images, train_labels, sess, n_samples=1):
+  def propose_samples_min_var_logit(self, sup_imgs, sup_lbls, train_images, train_labels, sess, n_samples=1, vis=False):
     embs = self.calc_embedding(train_images, self.test_logit)
 
     var = np.var(embs, axis = 1)
     indices = np.argpartition(var, kth=n_samples)[:n_samples]
+    if vis:
+      for i in indices:
+          show_sample_img(train_images[i])
+          print('existing samples in training set from same class')
+          inds = np.where(sup_lbls == train_labels[i])
+          show_sample_img_inline(sup_imgs[inds])
+
     print('indices', indices, var[indices])
     return indices
 
 
-  def propose_samples_random_classes(self, sup_imgs, sup_lbls, train_images, train_labels, sess, n_samples=1):
+  def propose_samples_random_classes(self, sup_imgs, sup_lbls, train_images, train_labels, sess, n_samples=1, vis=False):
     """
     propose samples randomly, but ensure that the class distribution stays equal
     this then approaches training with more samples
@@ -410,6 +527,11 @@ class SemisupModel(object):
       print(rng.choice(inds_from_class, 1, False))
       indices = indices + [rng.choice(inds_from_class, 1, False)[0]]
 
-    print(indices)
+    if vis:
+      for i in indices:
+          show_sample_img(train_images[i])
+          print('existing samples in training set from same class')
+          inds = np.where(sup_lbls == train_labels[i])
+          show_sample_img_inline(sup_imgs[inds])
     return indices
 
