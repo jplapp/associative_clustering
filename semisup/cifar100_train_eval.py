@@ -34,7 +34,7 @@ from tensorflow.python.platform import flags
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_integer('sup_per_class', 5000,
+flags.DEFINE_integer('sup_per_class', 500,
                      'Number of labeled samples used per class.')
 
 flags.DEFINE_integer('sup_seed', -1,
@@ -62,10 +62,10 @@ flags.DEFINE_integer('max_epochs', 300, 'Number of training epochs.')
 
 flags.DEFINE_string('logdir', '/tmp/semisup_cifar', 'Training log path.')
 
-flags.DEFINE_string('cifar', 'cifar10', 'Which cifar dataset to use')
+flags.DEFINE_string('cifar', 'cifar100', 'Which cifar dataset to use')
 
-#flags.DEFINE_string('dataset_dir', '/usr/stud/plapp/data/cifar-100-binary', 'Data path')
-flags.DEFINE_string('dataset_dir', '/usr/stud/plapp/data/cifar-10-batches-bin', 'Data path')
+flags.DEFINE_string('dataset_dir', '/usr/stud/plapp/data/cifar-100-binary', 'Data path')
+#flags.DEFINE_string('dataset_dir', '/usr/stud/plapp/data/cifar-10-batches-bin', 'Data path')
 
 from tools import cifar100 as data
 
@@ -96,7 +96,7 @@ def main(_):
   graph = tf.Graph()
   with graph.as_default():
     model = semisup.SemisupModel(semisup.architectures.densenet_model, NUM_LABELS,
-                                 IMAGE_SHAPE)
+                                 IMAGE_SHAPE, optimizer='sgd')
 
     # Set up inputs.
     train_sup, train_labels_sup = data.build_input(FLAGS.cifar,
@@ -161,7 +161,7 @@ def main(_):
         print('Epoch: %d' % epoch)
 
         t_imgs, t_lbls = model.get_images(test_images, test_labels, num_total_batches, sess)
-        test_pred = model.classify(t_imgs).argmax(-1)
+        test_pred = model.classify(t_imgs, sess).argmax(-1)
         conf_mtx = semisup.confusion_matrix(t_lbls, test_pred, NUM_LABELS)
         test_err = (t_lbls != test_pred).mean() * 100
         print(conf_mtx)
@@ -169,7 +169,7 @@ def main(_):
         print()
 
         t_imgs, t_lbls = model.get_images(train_sup, train_labels_sup, num_total_batches, sess)
-        train_pred = model.classify(t_imgs).argmax(-1)
+        train_pred = model.classify(t_imgs, sess).argmax(-1)
         train_err = (t_lbls != train_pred).mean() * 100
         print('Train error: %.2f %%' % train_err)
 

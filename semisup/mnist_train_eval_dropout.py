@@ -34,13 +34,13 @@ from tensorflow.python.platform import flags
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_integer('sup_per_class', 2,
+flags.DEFINE_integer('sup_per_class', 3,
                      'Number of labeled samples used per class.')
 
 flags.DEFINE_integer('sup_seed', -1,
                      'Integer random seed used for labeled set selection.')
 
-flags.DEFINE_integer('sup_per_batch', 2,
+flags.DEFINE_integer('sup_per_batch', 3,
                      'Number of labeled samples per class per batch.')
 
 flags.DEFINE_integer('unsup_batch_size', 50,
@@ -114,7 +114,7 @@ def main(_):
 
     t_unsup_images = tf.placeholder("float", shape=[None] + IMAGE_SHAPE)
 
-    class_equal_weight = tf.placeholder("float", shape=[])
+    proximity_weight = tf.placeholder("float", shape=[])
     visit_weight = tf.placeholder("float", shape=[])
     walker_weight = tf.placeholder("float", shape=[])
     t_logit_weight = tf.placeholder("float", shape=[])
@@ -124,7 +124,7 @@ def main(_):
     t_unsup_emb = model.image_to_embedding(t_unsup_images)
     model.add_semisup_loss(
       t_sup_emb, t_unsup_emb, t_sup_labels,
-      walker_weight=walker_weight, visit_weight=visit_weight, class_equal_weight=class_equal_weight)
+      walker_weight=walker_weight, visit_weight=visit_weight, proximity_weight=proximity_weight)
     model.add_logit_loss(t_sup_logit, t_sup_labels, weight=t_logit_weight)
 
     model.add_emb_regularization(t_sup_emb, weight=t_l1_weight)
@@ -146,7 +146,7 @@ def main(_):
   coord = tf.train.Coordinator()
   threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
-  use_new_visit_loss = True
+  use_new_visit_loss = False
   for step in range(FLAGS.max_steps):
     unsup_images, _ = sess.run(unsup_images_iterator)
 
@@ -154,19 +154,19 @@ def main(_):
       _, summaries, train_loss = sess.run([train_op, summary_op, model.train_loss], {
         t_unsup_images: unsup_images,
         walker_weight: FLAGS.walker_weight,
-        visit_weight: 0.3 + apply_envelope("lin", step, 0.7, FLAGS.warmup_steps, 0)
-                      - apply_envelope("lin", step, FLAGS.visit_weight, 2000, FLAGS.warmup_steps),
+        proximity_weight: 0.3 + apply_envelope("lin", step, 0.7, FLAGS.warmup_steps, 0)
+                          - apply_envelope("lin", step, FLAGS.visit_weight, 2000, FLAGS.warmup_steps),
         t_logit_weight: FLAGS.logit_weight,
         t_l1_weight: FLAGS.l1_weight,
-        class_equal_weight: apply_envelope("lin", step, FLAGS.visit_weight, 2000, FLAGS.warmup_steps),
+        visit_weight: apply_envelope("lin", step, FLAGS.visit_weight, 2000, FLAGS.warmup_steps),
         t_learning_rate: 5e-5 + apply_envelope("log", step, FLAGS.learning_rate, FLAGS.warmup_steps, 0)
       })
     else:
       _, summaries, train_loss = sess.run([train_op, summary_op, model.train_loss], {
         t_unsup_images: unsup_images,
         walker_weight: FLAGS.walker_weight,
-        visit_weight: 0,
-        class_equal_weight: 0.3 + apply_envelope("lin", step, 0.7, FLAGS.warmup_steps, 0),
+        visit_weight: 0.3 + apply_envelope("lin", step, 0.7, FLAGS.warmup_steps, 0),
+        proximity_weight: 0,
         t_logit_weight: FLAGS.logit_weight,
         t_l1_weight: FLAGS.l1_weight,
         t_learning_rate: 5e-5 + apply_envelope("log", step, FLAGS.learning_rate, FLAGS.warmup_steps, 0)
