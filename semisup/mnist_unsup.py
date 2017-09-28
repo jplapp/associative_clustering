@@ -26,7 +26,7 @@ flags.DEFINE_integer('unsup_batch_size', 100,
 flags.DEFINE_integer('eval_interval', 500,
                      'Number of steps between evaluations.')
 
-flags.DEFINE_float('learning_rate', 1e-3, 'Initial learning rate.')
+flags.DEFINE_float('learning_rate', 1e-4, 'Initial learning rate.')
 
 flags.DEFINE_float('decay_factor', 0.33, 'Learning rate decay factor.') # todo: currently ignored
 
