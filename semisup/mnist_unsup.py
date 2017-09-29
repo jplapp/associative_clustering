@@ -23,7 +23,7 @@ flags.DEFINE_integer('virtual_embeddings_per_class', 4,
 flags.DEFINE_integer('unsup_batch_size', 100,
                      'Number of unlabeled samples per batch.')
 
-flags.DEFINE_integer('eval_interval', 500,
+flags.DEFINE_integer('eval_interval', 1000,
                      'Number of steps between evaluations.')
 
 flags.DEFINE_float('learning_rate', 1e-4, 'Initial learning rate.')
@@ -80,20 +80,30 @@ def main(_):
     # Set up inputs.
     init_virt = []
     avg = np.average(train_images, axis=0)
+    print('dim', avg.shape)
     for c in range(NUM_LABELS):
       if FLAGS.init_method == 'uniform_128':
         imgs = np.random.uniform(0, 128, size=[FLAGS.virtual_embeddings_per_class] + IMAGE_SHAPE)
+      elif FLAGS.init_method == 'uniform_10':
+        imgs = np.random.uniform(0, 10, size=[FLAGS.virtual_embeddings_per_class] + IMAGE_SHAPE)
       elif FLAGS.init_method == 'uniform_255':
         imgs = np.random.uniform(0, 255, size=[FLAGS.virtual_embeddings_per_class] + IMAGE_SHAPE)
       elif FLAGS.init_method == 'avg':
-        noise = np.random.uniform(0, 10, size=[FLAGS.virtual_embeddings_per_class] + IMAGE_SHAPE)
+        # -20,20 works ok
+        # 0,10 does not work
+        noise = np.random.uniform(-20, 20, size=[FLAGS.virtual_embeddings_per_class] + IMAGE_SHAPE)
         imgs = noise + avg
+      elif FLAGS.init_method == 'random_center':
+        # for every class, first draw center, then add a bit of noise
+        center = np.random.uniform(0, 128, size=[1] + IMAGE_SHAPE)
+        noise = np.random.uniform(-3, 3, size=[FLAGS.virtual_embeddings_per_class] + IMAGE_SHAPE)
+        imgs = noise + center
       else:
         assert False, 'invalid init_method chosen'
 
       init_virt.extend(imgs)
 
-    t_sup_images = tf.Variable(np.array(init_virt), name="virtual_images")
+    t_sup_images = tf.constant(np.array(init_virt), name="virtual_images")
     t_sup_labels = tf.constant(np.concatenate([[i] * FLAGS.virtual_embeddings_per_class for i in range(NUM_LABELS)]))
 
     # Compute embeddings and logits.
@@ -170,6 +180,11 @@ def main(_):
 
     coord.request_stop()
     coord.join(threads)
+
+    print('FINAL RESULTS:')
+    print(conf_mtx)
+    print(corrected_conf_mtx)
+    print('Test error corrected: %.2f %%' % (100 - test_err_corrected * 100))
 
 
 if __name__ == '__main__':
