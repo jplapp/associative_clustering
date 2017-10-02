@@ -26,7 +26,7 @@ from __future__ import print_function
 import numpy as np
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.platform import gfile
-import data_dirs
+from tools import data_dirs
 
 DATADIR = data_dirs.stl10
 NUM_LABELS = 10
@@ -63,7 +63,7 @@ def get_data(name, max_num=20000):
 def extract_images(filename, shape):
   """Extract the images into a 4D uint8 numpy array [index, y, x, depth]."""
   logging.info('Extracting %s', filename)
-  with gfile.Open(filename) as f:
+  with gfile.Open(filename, 'rb') as f:
     imgs = np.fromstring(f.read(), np.uint8)
   imgs = imgs.reshape(-1, *shape[::-1])
   imgs = np.transpose(imgs, [0, 3, 2, 1])
@@ -73,7 +73,7 @@ def extract_images(filename, shape):
 def extract_labels(filename):
   """Extract the labels into a 1D uint8 numpy array [index]."""
   logging.info('Extracting %s', filename)
-  with gfile.Open(filename) as f:
+  with gfile.Open(filename, 'rb') as f:
     lbls = np.fromstring(f.read(), np.uint8)
   lbls -= 1  # STL-10 labels are not zero-indexed
   return lbls

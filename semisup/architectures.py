@@ -181,6 +181,7 @@ def stl10_model(inputs,
                 emb_size=128,
                 img_shape=None,
                 new_shape=None,
+                dropout_keep_prob=None,
                 image_summary=False,
                 batch_norm_decay=0.99):
     """Construct the image-to-embedding model."""
