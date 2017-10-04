@@ -101,7 +101,7 @@ def main(_):
         imgs = noise + avg
       elif FLAGS.init_method == 'random_center':
         # for every class, first draw center, then add a bit of noise
-        center = np.random.uniform(0, 128, size=[1] + IMAGE_SHAPE)
+        center = np.random.uniform(0, 255, size=[1] + IMAGE_SHAPE)
         noise = np.random.uniform(-3, 3, size=[FLAGS.virtual_embeddings_per_class] + IMAGE_SHAPE)
         imgs = noise + center
       else:
@@ -167,17 +167,17 @@ def main(_):
         conf_mtx = semisup.confusion_matrix(test_labels, test_pred, NUM_LABELS)
         test_err = (test_labels != test_pred).mean() * 100
 
-        corrected_conf_mtx, test_err_corrected = model.calc_opt_logit_score(test_images, test_labels, sess)
+        corrected_conf_mtx, score_corrected = model.calc_opt_logit_score(test_images, test_labels, sess)
         print(conf_mtx)
         print(corrected_conf_mtx)
         print('Test error: %.2f %%' % test_err)
-        print('Test error corrected: %.2f %%' % (100 - test_err_corrected * 100))
+        print('Test error corrected: %.2f %%' % (100 - score_corrected * 100))
         print('Train loss: %.2f ' % train_loss)
         print()
 
         test_summary = tf.Summary(
             value=[tf.Summary.Value(
-                tag='Test Err', simple_value=test_err_corrected)])
+                tag='Test Err', simple_value=score_corrected)])
 
         summary_writer.add_summary(summaries, step)
         summary_writer.add_summary(test_summary, step)
@@ -190,7 +190,8 @@ def main(_):
     print('FINAL RESULTS:')
     print(conf_mtx)
     print(corrected_conf_mtx)
-    print('Test error corrected: %.2f %%' % (100 - test_err_corrected * 100))
+    print('Test error corrected: %.2f %%' % (100 - score_corrected * 100))
+    print('final_score', score_corrected)
 
 
 if __name__ == '__main__':

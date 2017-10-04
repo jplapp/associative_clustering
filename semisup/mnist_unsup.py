@@ -49,9 +49,13 @@ flags.DEFINE_integer('max_steps', 20000, 'Number of training steps.')
 flags.DEFINE_integer('emb_size', 128, 'Dimension of embedding space')
 
 flags.DEFINE_string('logdir', '/tmp/semisup_mnist', 'Training log path.')
-flags.DEFINE_string('init_method', 'uniform_128',
+flags.DEFINE_string('init_method', 'random_center',
                     'How to initialize image centroids. Should be one  of [uniform_128, uniform_255, avg]')
 flags.DEFINE_float('dropout_keep_prob', 0.8, 'Keep Prop in dropout. Set to 1 to deactivate dropout')
+
+
+flags.DEFINE_bool('variable_centroids', True, 'Use variable embeddings')
+flags.DEFINE_bool('image_space_centroids', True, 'Use centroids in image space. Otherwise, they are placed in the latent embedding space')
 
 print(FLAGS.learning_rate, FLAGS.__flags) # print all flags (useful when logging)
 
@@ -79,35 +83,59 @@ def main(_):
 
     # Set up inputs.
     init_virt = []
-    avg = np.average(train_images, axis=0)
-    print('dim', avg.shape)
-    for c in range(NUM_LABELS):
-      if FLAGS.init_method == 'uniform_128':
-        imgs = np.random.uniform(0, 128, size=[FLAGS.virtual_embeddings_per_class] + IMAGE_SHAPE)
-      elif FLAGS.init_method == 'uniform_10':
-        imgs = np.random.uniform(0, 10, size=[FLAGS.virtual_embeddings_per_class] + IMAGE_SHAPE)
-      elif FLAGS.init_method == 'uniform_255':
-        imgs = np.random.uniform(0, 255, size=[FLAGS.virtual_embeddings_per_class] + IMAGE_SHAPE)
-      elif FLAGS.init_method == 'avg':
-        # -20,20 works ok
-        # 0,10 does not work
-        noise = np.random.uniform(-20, 20, size=[FLAGS.virtual_embeddings_per_class] + IMAGE_SHAPE)
-        imgs = noise + avg
-      elif FLAGS.init_method == 'random_center':
-        # for every class, first draw center, then add a bit of noise
-        center = np.random.uniform(0, 128, size=[1] + IMAGE_SHAPE)
-        noise = np.random.uniform(-3, 3, size=[FLAGS.virtual_embeddings_per_class] + IMAGE_SHAPE)
-        imgs = noise + center
+
+    if FLAGS.image_space_centroids:
+      avg = np.average(train_images, axis=0)
+      print('dim', avg.shape)
+      for c in range(NUM_LABELS):
+        if FLAGS.init_method == 'uniform_128':
+          imgs = np.random.uniform(0, 128, size=[FLAGS.virtual_embeddings_per_class] + IMAGE_SHAPE)
+        elif FLAGS.init_method == 'uniform_10':
+          imgs = np.random.uniform(0, 10, size=[FLAGS.virtual_embeddings_per_class] + IMAGE_SHAPE)
+        elif FLAGS.init_method == 'uniform_255':
+          imgs = np.random.uniform(0, 255, size=[FLAGS.virtual_embeddings_per_class] + IMAGE_SHAPE)
+        elif FLAGS.init_method == 'avg':
+          # -20,20 works ok
+          # 0,10 does not work
+          noise = np.random.uniform(-20, 20, size=[FLAGS.virtual_embeddings_per_class] + IMAGE_SHAPE)
+          imgs = noise + avg
+        elif FLAGS.init_method == 'random_center':
+          # for every class, first draw center, then add a bit of noise
+          center = np.random.uniform(0, 255, size=[1] + IMAGE_SHAPE)
+          noise = np.random.uniform(-3, 3, size=[FLAGS.virtual_embeddings_per_class] + IMAGE_SHAPE)
+          imgs = noise + center
+        else:
+          assert False, 'invalid init_method chosen'
+
+        init_virt.extend(imgs)
+
+      if FLAGS.variable_centroids:
+        t_sup_images = tf.Variable(np.array(init_virt), name="virtual_images")
       else:
-        assert False, 'invalid init_method chosen'
+        t_sup_images = tf.constant(np.array(init_virt), name="virtual_images")
+      t_sup_emb = model.image_to_embedding(t_sup_images)
 
-      init_virt.extend(imgs)
+    else:
+      # centroids in embedding space
+      for c in range(NUM_LABELS):
+        if FLAGS.init_method == 'uniform_128':
+          centroids = np.random.uniform(-1, 1, size=[FLAGS.virtual_embeddings_per_class, FLAGS.emb_size])
+        elif FLAGS.init_method == 'random_center':
+          center = np.random.uniform(-1, 1, size=[1, FLAGS.emb_size])
+          noise = np.random.uniform(-0.1, 0.1, size=[FLAGS.virtual_embeddings_per_class, FLAGS.emb_size])
+          centroids = noise + center
+        else:
+          assert False, 'invalid init_method chosen'
 
-    t_sup_images = tf.constant(np.array(init_virt), name="virtual_images")
+        init_virt.extend(centroids)
+
+      if FLAGS.variable_centroids:
+        t_sup_emb = tf.Variable(np.array(init_virt), name="virtual_centroids")
+      else:
+        t_sup_emb = tf.constant(np.array(init_virt), name="virtual_centroids")
+
     t_sup_labels = tf.constant(np.concatenate([[i] * FLAGS.virtual_embeddings_per_class for i in range(NUM_LABELS)]))
 
-    # Compute embeddings and logits.
-    t_sup_emb = model.image_to_embedding(t_sup_images)
     t_sup_logit = model.embedding_to_logit(t_sup_emb)
 
     t_unsup_images, _ = semisup.create_input(train_images, np.zeros(len(train_images)),
@@ -161,17 +189,17 @@ def main(_):
         conf_mtx = semisup.confusion_matrix(test_labels, test_pred, NUM_LABELS)
         test_err = (test_labels != test_pred).mean() * 100
 
-        corrected_conf_mtx, test_err_corrected = model.calc_opt_logit_score(test_images, test_labels, sess)
+        corrected_conf_mtx, score_corrected = model.calc_opt_logit_score(test_images, test_labels, sess)
         print(conf_mtx)
         print(corrected_conf_mtx)
         print('Test error: %.2f %%' % test_err)
-        print('Test error corrected: %.2f %%' % (100 - test_err_corrected * 100))
+        print('Test error corrected: %.2f %%' % (100 - score_corrected * 100))
         print('Train loss: %.2f ' % train_loss)
         print()
 
         test_summary = tf.Summary(
             value=[tf.Summary.Value(
-                tag='Test Err', simple_value=test_err_corrected)])
+                tag='Test Err', simple_value=score_corrected)])
 
         summary_writer.add_summary(summaries, step)
         summary_writer.add_summary(test_summary, step)
@@ -184,7 +212,8 @@ def main(_):
     print('FINAL RESULTS:')
     print(conf_mtx)
     print(corrected_conf_mtx)
-    print('Test error corrected: %.2f %%' % (100 - test_err_corrected * 100))
+    print('Test error corrected: %.2f %%' % (100 - score_corrected * 100))
+    print('final_score', score_corrected)
 
 
 if __name__ == '__main__':
