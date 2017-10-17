@@ -55,6 +55,8 @@ img_size_flat = img_size * img_size * num_channels
 ########################################################################
 # Various constants used to allocate arrays of the correct size.
 
+NUM_LABELS = 10 # todo only valid for cifar 10
+IMAGE_SHAPE = [32, 32, 3]
 
 _params = {
   'cifar10': {
@@ -304,6 +306,11 @@ def load_test_data(dataset):
 
 ########################################################################
 
+def get_data(name):
+  if name == 'train':
+    return load_training_data('cifar10')
+  if name == 'test':
+    return load_test_data('cifar10')
 
 if __name__ == '__main__':
   dataset='cifar100'

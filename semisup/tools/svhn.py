@@ -24,7 +24,7 @@ from __future__ import division
 from __future__ import print_function
 import numpy as np
 import scipy.io
-import data_dirs
+from tools import data_dirs
 
 
 DATADIR = data_dirs.svhn

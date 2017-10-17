@@ -75,7 +75,7 @@ n_restarts = 0
 def main(_):
   global n_restarts
 
-  train_images, unused_train_labels = mnist_tools.get_data('train')
+  train_images, _ = mnist_tools.get_data('train')
   test_images, test_labels = mnist_tools.get_data('test')
 
   graph = tf.Graph()
@@ -195,8 +195,8 @@ def main(_):
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
     for step in range(FLAGS.max_steps):
-      _, summaries, train_loss, centroids, unsup_emb = sess.run(
-        [train_op, summary_op, model.train_loss, t_sup_emb, t_unsup_emb], {
+      _, summaries, train_loss, centroids, unsup_emb, estimated_error = sess.run(
+        [train_op, summary_op, model.train_loss, t_sup_emb, t_unsup_emb, model.estimate_error], {
           walker_weight: FLAGS.walker_weight,
           proximity_weight: FLAGS.proximity_weight,
           visit_weight: FLAGS.visit_weight_base + apply_envelope("log", step, FLAGS.visit_weight_add, FLAGS.warmup_steps, 0),
@@ -217,6 +217,7 @@ def main(_):
         print('Test error: %.2f %%' % test_err)
         print('Test error corrected: %.2f %%' % (100 - score_corrected * 100))
         print('Train loss: %.2f ' % train_loss)
+        print('Estimated error: %.2f ' % estimated_error)
         print()
 
         if FLAGS.write_summary:

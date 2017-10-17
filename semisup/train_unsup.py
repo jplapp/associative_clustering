@@ -76,16 +76,38 @@ from semisup.backend import apply_envelope
 n_restarts = 0
 
 dataset_tools = import_module('tools.' + FLAGS.dataset)
-train_images, train_labels = dataset_tools.get_data('train')
 
 NUM_LABELS = dataset_tools.NUM_LABELS
 IMAGE_SHAPE = dataset_tools.IMAGE_SHAPE
+#IMAGE_SHAPE = [32,32,1]
 
 def main(_):
   global n_restarts
 
-  train_images, unused_train_labels = dataset_tools.get_data('train')
+  unbalanced_train_images, train_labels_for_balancing = dataset_tools.get_data('train')
   test_images, test_labels = dataset_tools.get_data('test')
+
+  # some datasets like svhn have very unbalanced label distribution. this does not work well here, so, we have to balance that.
+  dist = np.histogram(train_labels_for_balancing)
+  print('dist', dist)
+  max = np.min(dist[0])
+  train_images = []
+  train_labels_fs = []
+  for i in range(NUM_LABELS):
+    imgs = unbalanced_train_images[train_labels_for_balancing == i][:max]
+    lbls = train_labels_for_balancing[train_labels_for_balancing == i][:max]
+    train_images.extend(imgs)
+    train_labels_fs.extend(lbls)
+
+  train_images = np.asarray(train_images)
+  train_labels_fs = np.asarray(train_labels_fs)
+
+  # convert to grayscale
+  #train_images = (train_images[:, :, :, 0] + train_images[:, :, :, 0] + train_images[:, :, :, 0]) / 3
+  #train_images = train_images.reshape((train_images.shape[0], 32, 32, 1))
+
+  #test_images = (test_images[:, :, :, 0] + test_images[:, :, :, 0] + test_images[:, :, :, 0]) / 3
+  #test_images = test_images.reshape((test_images.shape[0], 32, 32, 1))
 
   graph = tf.Graph()
   with graph.as_default():
@@ -100,8 +122,16 @@ def main(_):
 
     seed = FLAGS.init_seed if FLAGS.init_seed is not None else np.random.randint(0, 1000)
     rng = np.random.RandomState(seed=seed)
+    t_sup_labels = tf.constant(np.concatenate([[i] * FLAGS.virtual_embeddings_per_class for i in range(NUM_LABELS)]))
 
-    if FLAGS.image_space_centroids:
+    if FLAGS.init_method == 'supervised':
+      sup_by_label = semisup.sample_by_label(train_images, train_labels_fs,
+                                             FLAGS.virtual_embeddings_per_class, NUM_LABELS, seed)
+      t_sup_images, t_sup_labels = semisup.create_per_class_inputs(
+        sup_by_label, 4)
+      t_sup_emb = model.image_to_embedding(t_sup_images)
+
+    elif FLAGS.image_space_centroids:
       avg = np.average(train_images, axis=0)
       print('dim', avg.shape)
       for c in range(NUM_LABELS):
@@ -131,6 +161,7 @@ def main(_):
           center = rng.uniform(-64, 64, size=[1] + IMAGE_SHAPE)
           noise = rng.uniform(-3, 3, size=[FLAGS.virtual_embeddings_per_class] + IMAGE_SHAPE)
           imgs = noise + center
+
         else:
           assert False, 'invalid init_method chosen'
 
@@ -160,8 +191,6 @@ def main(_):
         t_sup_emb = tf.Variable(tf.cast(np.array(init_virt), tf.float32), name="virtual_centroids")
       else:
         t_sup_emb = tf.cast(tf.constant(np.array(init_virt), name="virtual_centroids"), tf.float32)
-
-    t_sup_labels = tf.constant(np.concatenate([[i] * FLAGS.virtual_embeddings_per_class for i in range(NUM_LABELS)]))
 
     t_sup_logit = model.embedding_to_logit(t_sup_emb)
 

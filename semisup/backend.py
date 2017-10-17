@@ -312,7 +312,7 @@ class SemisupModel(object):
     p_ba = tf.nn.softmax(tf.transpose(match_ab), name='p_ba')
     p_aba = tf.matmul(p_ab, p_ba, name='p_aba')
 
-    # self.create_walk_statistics(p_aba, equality_matrix)
+    self.create_walk_statistics(p_aba, equality_matrix)
 
     loss_aba = tf.losses.softmax_cross_entropy(
       p_target,
@@ -565,6 +565,8 @@ class SemisupModel(object):
         1.0 - per_row_accuracy, name=p_aba.name[:-2] + '_esterr')
     self.add_average(estimate_error)
     self.add_average(p_aba)
+
+    self.estimate_error = estimate_error
 
     tf.summary.scalar('Stats_EstError', estimate_error)
 
