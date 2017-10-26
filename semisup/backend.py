@@ -224,7 +224,8 @@ class SemisupModel(object):
   """Helper class for setting up semi-supervised training."""
 
   def __init__(self, model_func, num_labels, input_shape, test_in=None,
-               optimizer='adam', emb_size=128, dropout_keep_prob=1, augmentation_function=None):
+               optimizer='adam', beta1=0.9,beta2=0.999,
+               emb_size=128, dropout_keep_prob=1, augmentation_function=None, normalize_embeddings=False):
     """Initialize SemisupModel class.
 
     Creates an evaluation graph for the provided model_func.
@@ -249,6 +250,8 @@ class SemisupModel(object):
     self.model_func = model_func
     self.augmentation_function = augmentation_function
     self.optimizer = optimizer
+    self.beta1 = beta1
+    self.beta2 = beta2
     self.dropout_keep_prob = dropout_keep_prob
 
     if test_in is not None:
@@ -257,6 +260,8 @@ class SemisupModel(object):
       self.test_in = tf.placeholder(np.float32, [None] + input_shape, 'test_in')
 
     self.test_emb = self.image_to_embedding(self.test_in, is_training=False)
+    if normalize_embeddings:
+      self.test_emb = tf.nn.l2_normalize(self.test_emb, dim=1)
     self.test_logit = self.embedding_to_logit(self.test_emb, is_training=False)
 
   def reset_optimizer(self, sess):
@@ -275,21 +280,22 @@ class SemisupModel(object):
   def image_to_embedding(self, images, is_training=True):
     """Create a graph, transforming images into embedding vectors."""
     with tf.variable_scope('net', reuse=is_training):
-      self.model = self.model_func(images, is_training=is_training, emb_size=self.emb_size,
+      model = self.model_func(images, is_training=is_training, emb_size=self.emb_size,
                                    dropout_keep_prob=self.dropout_keep_prob, augmentation_function=self.augmentation_function)
-      return self.model
+      return model
 
   def embedding_to_logit(self, embedding, is_training=True):
-    """Create a graph, transforming embedding vectors to logit classs scores."""
+    """Create a graph, transforming embedding vectors to logit class scores."""
     with tf.variable_scope('net', reuse=is_training):
       return slim.fully_connected(
           embedding,
           self.num_labels,
           activation_fn=None,
-          weights_regularizer=slim.l2_regularizer(1e-4))
+          weights_regularizer=slim.l2_regularizer(1e-4),
+          scope='logit_fc')
 
   def add_semisup_loss(self, a, b, labels, walker_weight=1.0, visit_weight=1.0, proximity_weight=None,
-                       normalize_along_classes=False):
+                       normalize_along_classes=False, match_scale = 1.0):
     """Add semi-supervised classification loss to the model.
 
     The loss consists of two terms: "walker" and "visit".
@@ -307,11 +313,14 @@ class SemisupModel(object):
     p_target = (equality_matrix / tf.reduce_sum(
       equality_matrix, [1], keep_dims=True))  # *2  # TODO why does this help??
 
-    match_ab = tf.matmul(a, b, transpose_b=True, name='match_ab')
+    match_ab = tf.matmul(a, b, transpose_b=True, name='match_ab') * match_scale
     p_ab = tf.nn.softmax(match_ab, name='p_ab')
     p_ba = tf.nn.softmax(tf.transpose(match_ab), name='p_ba')
     p_aba = tf.matmul(p_ab, p_ba, name='p_aba')
 
+    self.p_ab = p_ab
+    self.p_ba = p_ba
+    self.p_aba = p_aba
     self.create_walk_statistics(p_aba, equality_matrix)
 
     loss_aba = tf.losses.softmax_cross_entropy(
@@ -319,6 +328,8 @@ class SemisupModel(object):
       tf.log(1e-8 + p_aba),
       weights=walker_weight,
       scope='loss_aba')
+
+    self.loss_aba = loss_aba
 
     if normalize_along_classes:
       self.add_visit_loss_class_normalized(p_ab, p_target, visit_weight)
@@ -581,6 +592,11 @@ class SemisupModel(object):
     """weight should be a tensor"""
     l1_loss(embs, weight)
 
+  def add_emb_normalization(self, embs, weight, target=1):
+    """weight should be a tensor"""
+    l2n = tf.norm(embs, axis = 1)
+    l1_loss((l2n - target) ** 2, weight)
+
   def create_train_op(self, learning_rate):
     """Create and return training operation."""
 
@@ -600,7 +616,9 @@ class SemisupModel(object):
       self.trainer = tf.train.MomentumOptimizer(
             learning_rate, 0.9, use_nesterov=False)
     elif self.optimizer == 'adam':
-      self.trainer = tf.train.AdamOptimizer(learning_rate)
+      self.trainer = tf.train.AdamOptimizer(learning_rate, beta1=self.beta1, beta2=self.beta2)
+    elif self.optimizer == 'rms':
+      self.trainer = tf.train.RMSPropOptimizer(learning_rate, momentum=0.9)
     else:
       print('unrecognized optimizer')
 
@@ -885,19 +903,21 @@ class SemisupModel(object):
           show_sample_img_inline(sup_imgs[inds])
     return indices
 
-  def calc_opt_logit_score(self, imgs, lbls, sess):
+  def calc_opt_logit_score(self, preds, lbls, sess):
     # for the correct cluster score, we have to match clusters to classes
     # to do this, we can use the test labels to get the optimal matching
     # as in the literature, only the best clustering of all possible clustering counts
+    # CAUTION: this is only an upper bound on the accuracy - multiple clusters can be assigned the same label
+    #   (the resulting confusion matrix can have empty columns)
+    #   typically only happens in cases of low accuracy
 
-    preds = self.classify(imgs, sess).argmax(-1)
-
-    pred_map = np.zeros(self.num_labels, np.int)
+    pred_map = np.ones(self.num_labels, np.int) * -1
 
     for i in range(self.num_labels):
       samples_with_pred_i = (preds == i)
       labels = np.bincount(lbls[samples_with_pred_i])
       if len(labels) > 0:
+        #labels[pred_map[pred_map > -1]] = -1
         pred_map[i] = labels.argmax()
 
     # classify with closest sample

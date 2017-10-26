@@ -9,6 +9,8 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+import time
+
 tf.logging.set_verbosity(tf.logging.ERROR)
 import semisup
 
@@ -41,13 +43,19 @@ flags.DEFINE_float('visit_weight_add', 0, 'Additional weight for visit loss afte
 
 flags.DEFINE_float('proximity_weight', 0, 'Weight for proximity loss.')
 
-flags.DEFINE_float('l1_weight', 0.00005, 'Weight for l1 embeddding regularization')
+flags.DEFINE_float('l1_weight', 0.0005, 'Weight for l1 embeddding regularization')
+flags.DEFINE_float('norm_weight', 0, 'Weight for embedding normalization')
 flags.DEFINE_float('logit_weight', 0.5, 'Weight for l1 embeddding regularization')
 
 flags.DEFINE_float('walker_weight', 1.0, 'Weight for walker loss.')
+flags.DEFINE_bool('normalize_input', False, 'Normalize input images to be between -1 and 1. Requires tanh autoencoder')
 
 flags.DEFINE_integer('max_steps', 20000, 'Number of training steps.')
 flags.DEFINE_integer('emb_size', 128, 'Dimension of embedding space')
+flags.DEFINE_float('scale_match_ab', 1, 'How to scale match ab to prevent numeric instability')
+
+flags.DEFINE_string('optimizer', 'adam', 'Optimizer. Can be [adam, sgd, rms]')
+flags.DEFINE_float('adam_beta', 0.9, 'beta parameter for adam')
 
 flags.DEFINE_string('logdir', '/tmp/semisup_mnist', 'Training log path.')
 flags.DEFINE_string('init_method', 'random_center',
@@ -62,7 +70,9 @@ flags.DEFINE_string('architecture', 'mnist_model_dropout', 'Which network archit
                     'from architectures.py to use.')
 
 flags.DEFINE_bool('normal', True, 'turn off to enable special changes')
+flags.DEFINE_string('restore_checkpoint', None, 'restore weights from checkpoint')
 flags.DEFINE_bool('write_summary', False, 'Write summary to disk')
+flags.DEFINE_bool('normalize_embeddings', False, 'Normalize embeddings (l2 norm = 1)')
 flags.DEFINE_bool('variable_centroids', True, 'Use variable embeddings')
 flags.DEFINE_bool('image_space_centroids', True, 'Use centroids in image space. Otherwise, they are placed in the latent embedding space')
 
@@ -70,6 +80,7 @@ flags.DEFINE_bool('image_space_centroids', True, 'Use centroids in image space. 
 print(FLAGS.learning_rate, FLAGS.__flags) # print all flags (useful when logging)
 
 import numpy as np
+from numpy.linalg import norm
 from semisup.backend import apply_envelope
 
 
@@ -84,45 +95,64 @@ IMAGE_SHAPE = dataset_tools.IMAGE_SHAPE
 def main(_):
   global n_restarts
 
-  unbalanced_train_images, train_labels_for_balancing = dataset_tools.get_data('train')
+  train_images, train_labels_fs = dataset_tools.get_data('train')
   test_images, test_labels = dataset_tools.get_data('test')
 
   # some datasets like svhn have very unbalanced label distribution. this does not work well here, so, we have to balance that.
-  dist = np.histogram(train_labels_for_balancing)
-  print('dist', dist)
-  max = np.min(dist[0])
-  train_images = []
-  train_labels_fs = []
-  for i in range(NUM_LABELS):
-    imgs = unbalanced_train_images[train_labels_for_balancing == i][:max]
-    lbls = train_labels_for_balancing[train_labels_for_balancing == i][:max]
-    train_images.extend(imgs)
-    train_labels_fs.extend(lbls)
+  normalize_class_dist = False
+  if normalize_class_dist:
+    dist = np.histogram(train_labels_fs)
+    print('dist', dist)
+    max = np.min(dist[0])
+    train_images = []
+    train_labels_fs = []
+    for i in range(NUM_LABELS):
+      imgs = train_images[train_labels_fs == i][:max]
+      lbls = train_labels_fs[train_labels_fs == i][:max]
+      train_images.extend(imgs)
+      train_labels_fs.extend(lbls)
 
-  train_images = np.asarray(train_images)
-  train_labels_fs = np.asarray(train_labels_fs)
+    train_images = np.asarray(train_images)
+    train_labels_fs = np.asarray(train_labels_fs)
 
-  # convert to grayscale
-  #train_images = (train_images[:, :, :, 0] + train_images[:, :, :, 0] + train_images[:, :, :, 0]) / 3
-  #train_images = train_images.reshape((train_images.shape[0], 32, 32, 1))
+  if FLAGS.dataset == 'stl10':
+    train_images = np.vstack([train_images, test_images])
+    train_labels_fs = np.hstack([train_labels_fs, test_labels])
 
-  #test_images = (test_images[:, :, :, 0] + test_images[:, :, :, 0] + test_images[:, :, :, 0]) / 3
-  #test_images = test_images.reshape((test_images.shape[0], 32, 32, 1))
+  if FLAGS.scale_input is not None:
+    train_images = train_images / FLAGS.scale_input
+    test_images = test_images / FLAGS.scale_input
+
+  if FLAGS.normalize_input:
+    train_images = (train_images - 128.) / 128.
+    test_images = (test_images - 128.) / 128.
 
   graph = tf.Graph()
   with graph.as_default():
     model_func = getattr(semisup.architectures, FLAGS.architecture)
 
+    t_images = tf.placeholder("float", shape=[None] + IMAGE_SHAPE)
+
+    dataset = tf.contrib.data.Dataset.from_tensor_slices(t_images)
+    dataset = dataset.shuffle(buffer_size=5000)
+    dataset = dataset.batch(FLAGS.unsup_batch_size)
+    dataset = dataset.repeat()
+
+    iterator = dataset.make_initializable_iterator()
+
+    t_unsup_images = iterator.get_next()
+
     model = semisup.SemisupModel(model_func, NUM_LABELS,
                                  IMAGE_SHAPE, emb_size=FLAGS.emb_size,
-                                 dropout_keep_prob=FLAGS.dropout_keep_prob)
+                                 dropout_keep_prob=FLAGS.dropout_keep_prob,
+                                 optimizer=FLAGS.optimizer,
+                                 normalize_embeddings=FLAGS.normalize_embeddings)
 
     # Set up inputs.
     init_virt = []
 
     seed = FLAGS.init_seed if FLAGS.init_seed is not None else np.random.randint(0, 1000)
     rng = np.random.RandomState(seed=seed)
-    t_sup_labels = tf.constant(np.concatenate([[i] * FLAGS.virtual_embeddings_per_class for i in range(NUM_LABELS)]))
 
     if FLAGS.init_method == 'supervised':
       sup_by_label = semisup.sample_by_label(train_images, train_labels_fs,
@@ -177,7 +207,15 @@ def main(_):
       # centroids in embedding space
       for c in range(NUM_LABELS):
         if FLAGS.init_method == 'normal':
-          centroids = rng.normal(0.015, 0.08, size=[FLAGS.virtual_embeddings_per_class, FLAGS.emb_size])
+          centroids = rng.normal(0.0, 0.0055, size=[FLAGS.virtual_embeddings_per_class, FLAGS.emb_size])
+        elif FLAGS.init_method == 'normal_center':
+          center = rng.normal(0.0, 0.0055, size=[1, FLAGS.emb_size])
+          noise = rng.uniform(-0.001, 0.001, size=[FLAGS.virtual_embeddings_per_class, FLAGS.emb_size])
+          centroids = noise + center
+        elif FLAGS.init_method == 'normal_center_1':
+          center = rng.normal(0.0, 1, size=[1, FLAGS.emb_size])
+          noise = rng.uniform(-0.01, 0.01, size=[FLAGS.virtual_embeddings_per_class, FLAGS.emb_size])
+          centroids = noise + center
         elif FLAGS.init_method == 'random_center':
           center = rng.uniform(-.5, .5, size=[1, FLAGS.emb_size])
           noise = rng.uniform(-0.1, 0.1, size=[FLAGS.virtual_embeddings_per_class, FLAGS.emb_size])
@@ -192,10 +230,10 @@ def main(_):
       else:
         t_sup_emb = tf.cast(tf.constant(np.array(init_virt), name="virtual_centroids"), tf.float32)
 
+    t_sup_labels = tf.constant(np.concatenate([[i] * FLAGS.virtual_embeddings_per_class for i in range(NUM_LABELS)]))
+
     t_sup_logit = model.embedding_to_logit(t_sup_emb)
 
-    t_unsup_images, _ = semisup.create_input(train_images, np.zeros(len(train_images)),
-                                               FLAGS.unsup_batch_size)
     t_unsup_emb = model.image_to_embedding(t_unsup_images)
 
     visit_weight = tf.placeholder("float", shape=[])
@@ -204,11 +242,18 @@ def main(_):
     t_logit_weight = tf.placeholder("float", shape=[])
 
     t_l1_weight = tf.placeholder("float", shape=[])
+    t_norm_weight = tf.placeholder("float", shape=[])
     t_learning_rate = tf.placeholder("float", shape=[])
 
-    model.add_semisup_loss(
-      t_sup_emb, t_unsup_emb, t_sup_labels,
-      walker_weight=walker_weight, visit_weight=visit_weight, proximity_weight=proximity_weight)
+    if FLAGS.normalize_embeddings:
+      model.add_semisup_loss(
+        tf.nn.l2_normalize(t_sup_emb, dim=1), tf.nn.l2_normalize(t_unsup_emb, dim=1), t_sup_labels,
+        walker_weight=walker_weight, visit_weight=visit_weight, proximity_weight=proximity_weight,
+        match_scale=FLAGS.scale_match_ab)
+    else:
+      model.add_semisup_loss(
+        t_sup_emb, t_unsup_emb, t_sup_labels,
+        walker_weight=walker_weight, visit_weight=visit_weight, proximity_weight=proximity_weight, match_scale=FLAGS.scale_match_ab)
 
     model.add_logit_loss(t_sup_logit, t_sup_labels, weight=t_logit_weight)
 
@@ -217,26 +262,40 @@ def main(_):
 
     model.add_emb_regularization(t_unsup_emb, weight=t_l1_weight)
 
-    train_op = model.create_train_op(t_learning_rate)
-    summary_op = tf.summary.merge_all()
+    model.add_emb_normalization(t_sup_emb, weight=t_norm_weight * 5, target=1)
+    model.add_emb_normalization(t_unsup_emb, weight=t_norm_weight, target=1)
 
-    summary_writer = tf.summary.FileWriter(FLAGS.logdir, graph)
+    train_op = model.create_train_op(t_learning_rate)
+    #summary_op = tf.summary.merge_all()
+
+    #summary_writer = tf.summary.FileWriter(FLAGS.logdir, graph)
 
     saver = tf.train.Saver()
 
   with tf.Session(graph=graph) as sess:
     tf.global_variables_initializer().run()
 
-    coord = tf.train.Coordinator()
-    threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+    sess.run(iterator.initializer, feed_dict={t_images: train_images})
+
+    if FLAGS.restore_checkpoint is not None:
+      # logit fc layer cannot be restored
+      def is_main_net(x):
+        return 'logit_fc' not in x.name and 'Adam' not in x.name
+
+      variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='net')
+      variables = list(filter(is_main_net, variables))
+
+      restorer = tf.train.Saver(var_list=variables)
+      restorer.restore(sess, FLAGS.restore_checkpoint)
 
     for step in range(FLAGS.max_steps):
-      _, summaries, train_loss, centroids, unsup_emb = sess.run(
-        [train_op, summary_op, model.train_loss, t_sup_emb, t_unsup_emb], {
+      _, train_loss, centroids, unsup_emb, estimated_error, p_aba = sess.run(
+        [train_op, model.train_loss, t_sup_emb, t_unsup_emb, model.estimate_error, model.p_aba], {
           walker_weight: FLAGS.walker_weight,
           proximity_weight: FLAGS.proximity_weight,
           visit_weight: FLAGS.visit_weight_base + apply_envelope("log", step, FLAGS.visit_weight_add, FLAGS.warmup_steps, 0),
           t_l1_weight: FLAGS.l1_weight,
+          t_norm_weight: FLAGS.norm_weight,
           t_logit_weight: FLAGS.logit_weight,
           t_learning_rate: 1e-6 + apply_envelope("log", step, FLAGS.learning_rate, FLAGS.warmup_steps, 0)
         })
@@ -247,26 +306,30 @@ def main(_):
         conf_mtx = semisup.confusion_matrix(test_labels, test_pred, NUM_LABELS)
         test_err = (test_labels != test_pred).mean() * 100
 
-        corrected_conf_mtx, score_corrected = model.calc_opt_logit_score(test_images, test_labels, sess)
+        corrected_conf_mtx, score_corrected = model.calc_opt_logit_score(test_pred, test_labels, sess)
         print(conf_mtx)
         print(corrected_conf_mtx)
         print('Test error: %.2f %%' % test_err)
         print('Test error corrected: %.2f %%' % (100 - score_corrected * 100))
         print('Train loss: %.2f ' % train_loss)
+        print('Estimated error: %.2f ' % estimated_error)
         print()
+        print(p_aba[0, :])
+
+        c_n = np.mean(norm(centroids, axis=1, ord=2))
+        e_n = np.mean(norm(unsup_emb, axis=1, ord=2))
+        print('centroid norm', c_n)
+        print('embedding norm', e_n)
 
         if FLAGS.write_summary:
           test_summary = tf.Summary(
             value=[tf.Summary.Value(
                 tag='Test Err', simple_value=score_corrected)])
 
-          summary_writer.add_summary(summaries, step)
-          summary_writer.add_summary(test_summary, step)
+          #summary_writer.add_summary(summaries, step)
+          #summary_writer.add_summary(test_summary, step)
 
           saver.save(sess, FLAGS.logdir, model.step)
-
-    coord.request_stop()
-    coord.join(threads)
 
     print('FINAL RESULTS:')
     print(conf_mtx)
@@ -281,7 +344,7 @@ def main(_):
     print('histogram stats:', hist)
     print('histogram dif:', dif)
 
-    if FLAGS.restart_threshold is not None and dif > FLAGS.restart_threshold:
+    if FLAGS.restart_threshold is not None and dif > FLAGS.restart_threshold and n_restarts < 10:
       n_restarts += 1
       print('restarting training')
       main(_)
