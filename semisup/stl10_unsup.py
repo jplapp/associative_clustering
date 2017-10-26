@@ -30,15 +30,10 @@ flags.DEFINE_integer('virtual_embeddings_per_class', 4,
 flags.DEFINE_integer('unsup_batch_size', 100,
                      'Number of unlabeled samples per batch.')
 
-flags.DEFINE_integer('eval_interval', 1000,
+flags.DEFINE_integer('eval_interval', 500,
                      'Number of steps between evaluations.')
 
 flags.DEFINE_float('learning_rate', 1e-4, 'Initial learning rate.')
-
-flags.DEFINE_float('decay_factor', 0.33, 'Learning rate decay factor.') # todo: currently ignored
-
-flags.DEFINE_float('decay_steps', 5000,
-                   'Learning rate decay interval in steps.')  # todo: currently ignored
 
 flags.DEFINE_integer('warmup_steps', 1000, 'Warmup steps.')
 
@@ -53,7 +48,7 @@ flags.DEFINE_float('logit_weight', 0.5, 'Weight for l1 embeddding regularization
 
 flags.DEFINE_float('walker_weight', 1.0, 'Weight for walker loss.')
 flags.DEFINE_float('scale_input', None, 'Scale Input by this factor (inversely)')
-flags.DEFINE_bool('normalize_input', False, 'Normalize input images to be between -1 and 1. Requires tanh autoencoder')
+flags.DEFINE_bool('normalize_input', True, 'Normalize input images to be between -1 and 1. Requires tanh autoencoder')
 
 flags.DEFINE_integer('max_steps', 20000, 'Number of training steps.')
 flags.DEFINE_integer('emb_size', 128, 'Dimension of embedding space')
@@ -186,15 +181,13 @@ def main(_):
 
     train_op = model.create_train_op(t_learning_rate)
 
-    saver = tf.train.Saver()
-
   with tf.Session(graph=graph) as sess:
     tf.global_variables_initializer().run()
 
     sess.run(iterator.initializer, feed_dict={t_images: train_images})
 
     # intialize from autoencoder pretraining
-    # weights can be found here:
+    # weights can be found here: https://1drv.ms/u/s!AuI2LtZbl6AZgc00v1xw_cVcDFW8Sw
 
     if FLAGS.restore_checkpoint is not None:
       # logit fc layer cannot be restored
@@ -223,11 +216,9 @@ def main(_):
         print('Step: %d' % step)
 
         test_pred = model.classify(test_images, sess).argmax(-1)
-        conf_mtx = semisup.confusion_matrix(test_labels, test_pred, NUM_LABELS)
 
         # score_corrected: assign clusters to labels to get best possible clustering
         corrected_conf_mtx, score_corrected = model.calc_opt_logit_score(test_pred, test_labels, sess)
-        print(conf_mtx)
         print(corrected_conf_mtx)
         print('Test error: %.2f %%' % (100 - score_corrected * 100))
         print('Train loss: %.2f ' % train_loss)
@@ -240,7 +231,6 @@ def main(_):
         print('embedding norm', e_n)
 
     print('FINAL RESULTS:')
-    print(conf_mtx)
     print(corrected_conf_mtx)
     print('Test error: %.2f %%' % (100 - score_corrected * 100))
     print('final_score', score_corrected)
