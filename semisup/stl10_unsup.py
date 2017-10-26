@@ -55,7 +55,6 @@ flags.DEFINE_integer('emb_size', 128, 'Dimension of embedding space')
 flags.DEFINE_float('scale_match_ab', 10, 'How to scale match ab to prevent numeric instability')
 
 flags.DEFINE_string('optimizer', 'adam', 'Optimizer. Can be [adam, sgd, rms]')
-flags.DEFINE_float('adam_beta', 0.9, 'beta parameter for adam')
 
 flags.DEFINE_string('init_method', 'normal_center03',
                     'How to initialize image centroids. Should be one  of [uniform_128, uniform_10, uniform_255, avg, random_center]')
@@ -144,7 +143,6 @@ def main(_):
       t_sup_emb = tf.cast(tf.constant(np.array(init_virt), name="virtual_centroids"), tf.float32)
 
     t_sup_labels = tf.constant(np.concatenate([[i] * FLAGS.virtual_embeddings_per_class for i in range(NUM_LABELS)]))
-    t_sup_logit = model.embedding_to_logit(t_sup_emb)
 
     t_unsup_emb = model.image_to_embedding(t_unsup_images)
 
@@ -158,11 +156,13 @@ def main(_):
     t_learning_rate = tf.placeholder("float", shape=[])
 
     if FLAGS.normalize_embeddings:
+      t_sup_logit = model.embedding_to_logit(tf.nn.l2_normalize(t_sup_emb, dim=1))
       model.add_semisup_loss(
         tf.nn.l2_normalize(t_sup_emb, dim=1), tf.nn.l2_normalize(t_unsup_emb, dim=1), t_sup_labels,
         walker_weight=walker_weight, visit_weight=visit_weight, proximity_weight=proximity_weight,
         match_scale=FLAGS.scale_match_ab)
     else:
+      t_sup_logit = model.embedding_to_logit(t_sup_emb)
       model.add_semisup_loss(
         t_sup_emb, t_unsup_emb, t_sup_labels,
         walker_weight=walker_weight, visit_weight=visit_weight, proximity_weight=proximity_weight, match_scale=FLAGS.scale_match_ab)
