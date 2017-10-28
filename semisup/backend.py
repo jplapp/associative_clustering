@@ -24,6 +24,7 @@ import numpy as np
 
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
+from scipy.optimize import linear_sum_assignment
 
 
 def show_sample_img(img):
@@ -295,7 +296,7 @@ class SemisupModel(object):
           scope='logit_fc')
 
   def add_semisup_loss(self, a, b, labels, walker_weight=1.0, visit_weight=1.0, proximity_weight=None,
-                       normalize_along_classes=False, match_scale = 1.0):
+                       normalize_along_classes=False, match_scale = 1.0, est_err=True):
     """Add semi-supervised classification loss to the model.
 
     The loss consists of two terms: "walker" and "visit".
@@ -318,17 +319,18 @@ class SemisupModel(object):
     p_ba = tf.nn.softmax(tf.transpose(match_ab), name='p_ba')
     p_aba = tf.matmul(p_ab, p_ba, name='p_aba')
 
-    self.p_ab = p_ab
-    self.p_ba = p_ba
-    self.p_aba = p_aba
-    self.create_walk_statistics(p_aba, equality_matrix)
+
+    if est_err:
+      self.create_walk_statistics(p_aba, equality_matrix)
+      self.p_ab = p_ab
+      self.p_ba = p_ba
+      self.p_aba = p_aba
 
     loss_aba = tf.losses.softmax_cross_entropy(
       p_target,
       tf.log(1e-8 + p_aba),
       weights=walker_weight,
       scope='loss_aba')
-
     self.loss_aba = loss_aba
 
     if normalize_along_classes:
@@ -340,6 +342,8 @@ class SemisupModel(object):
       self.add_visit_loss_bab(p_ab, p_ba, proximity_weight)
 
     tf.summary.scalar('Loss_aba', loss_aba)
+
+    return loss_aba
 
   def add_semisup_loss_with_logits(self, a, b, logits, walker_weight=1.0, visit_weight=1.0, stop_gradient=False):
     """Add semi-supervised classification loss to the model.
@@ -419,6 +423,9 @@ class SemisupModel(object):
     self.p_cac = p_cac
     self.p_ca = p_ca
     self.p_ac = p_ac
+    self.p_ab = p_ab
+    self.p_ba = p_ba
+    self.p_aba = p_aba
 
     loss_cabac = tf.losses.softmax_cross_entropy(
       p_target,
@@ -910,6 +917,7 @@ class SemisupModel(object):
     # CAUTION: this is only an upper bound on the accuracy - multiple clusters can be assigned the same label
     #   (the resulting confusion matrix can have empty columns)
     #   typically only happens in cases of low accuracy
+    #   -> use calc_correct_logit_score instead
 
     pred_map = np.ones(self.num_labels, np.int) * -1
 
@@ -928,3 +936,26 @@ class SemisupModel(object):
     return conf_mtx, np.mean(preds == lbls)
 
 
+
+def do_kmeans(embs, lbls, num_labels):
+  kmeans = KMeans(n_clusters=num_labels, random_state=0).fit(embs)
+  preds = kmeans.labels_
+  conf_mtx, score = calc_correct_logit_score(preds, lbls, num_labels)
+
+  return conf_mtx, score
+
+
+def calc_correct_logit_score(preds, lbls, num_labels):
+  # for the correct cluster score, a one-to-one mapping of clusters to classes is necessary
+  # this can be done using the hungarian algorithm
+  # (it is not allowed to assign two clusters to the same class label, even if that would benefit overall score
+
+  conf_mtx = confusion_matrix(lbls, preds, num_labels)
+  assi = linear_sum_assignment(-conf_mtx)
+  i = np.argsort(assi[1])
+
+  acc = conf_mtx[assi].sum() / conf_mtx.sum()
+
+  return conf_mtx[i], acc
+
+from sklearn.cluster import KMeans

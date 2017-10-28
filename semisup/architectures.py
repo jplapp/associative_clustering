@@ -300,34 +300,39 @@ def stl10_model_direct(inputs,
                 activation_fn=tf.nn.elu,
                 weights_regularizer=slim.l2_regularizer(5e-3), ):
             with slim.arg_scope([slim.conv2d], padding='SAME'):
-                with slim.arg_scope([slim.dropout], is_training=is_training):
-                    # 96
-                    with tf.variable_scope('level_1'):
+                # 96
+                with tf.variable_scope('level_1'):
 
-                        net = slim.conv2d(net, 32, [3, 3], scope='conv_s2')  #
-                        net = slim.conv2d(net, 64, [3, 3], stride=2, scope='conv1')
-                        # 48
-                        net = slim.max_pool2d(net, [3, 3], stride=3, scope='pool1')  #
-                    # 24
-                    with tf.variable_scope('level_2'):
+                    net = slim.conv2d(net, 32, [3, 3], scope='conv_s2')  #
+                    net = slim.conv2d(net, 64, [3, 3], stride=2, scope='conv1')
+                    # 48
+                    net = slim.max_pool2d(net, [3, 3], stride=2, scope='pool1')  #
+                    #net = slim.dropout(net, dropout_keep_prob,scope='dropout1')
 
-                        net = slim.conv2d(net, 64, [3, 3], scope='conv2')
-                        net = slim.conv2d(net, 128, [3, 3], scope='conv2_2')
-                        net = slim.max_pool2d(net, [2, 2], stride=2, scope='pool2')  #
-                    with tf.variable_scope('level_3'):
+                # 24
+                with tf.variable_scope('level_2'):
 
-                        # 11
-                        net = slim.conv2d(net, 128, [3, 3], scope='conv3_1')
-                        net = slim.conv2d(net, 256, [3, 3], scope='conv3_2')
-                        net = slim.max_pool2d(net, [2, 2], stride=2, scope='pool3')  #
-                        # 5
-                        net = slim.conv2d(net, 128, [3, 3], scope='conv4')
-                    with tf.variable_scope('level_4'):
+                    net = slim.conv2d(net, 64, [3, 3], scope='conv2')
+                    net = slim.conv2d(net, 128, [3, 3], scope='conv2_2')
+                    net = slim.max_pool2d(net, [2, 2], stride=2, scope='pool2')  #
 
-                        net = slim.flatten(net, scope='flatten')
-                        with slim.arg_scope([slim.fully_connected], normalizer_fn=None):
-                            emb = slim.fully_connected(
-                                net, emb_size, activation_fn=None, scope='fc1')
+                    #net = slim.dropout(net, dropout_keep_prob, scope='dropout2')
+                with tf.variable_scope('level_3'):
+
+                    # 11
+                    net = slim.conv2d(net, 128, [3, 3], scope='conv3_1')
+                    net = slim.conv2d(net, 256, [3, 3], scope='conv3_2')
+                    net = slim.max_pool2d(net, [2, 2], stride=2, scope='pool3')  #
+                    # 5
+                    net = slim.conv2d(net, 128, [3, 3], scope='conv4')
+                with tf.variable_scope('level_4'):
+
+                    net = slim.flatten(net, scope='flatten')
+                    #net = slim.dropout(net, dropout_keep_prob,  scope='dropout3')
+
+                    with slim.arg_scope([slim.fully_connected], normalizer_fn=None):
+                        emb = slim.fully_connected(
+                            net, emb_size, activation_fn=None, scope='fc1')
     return emb
 
 

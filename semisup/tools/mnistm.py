@@ -3,7 +3,7 @@ from __future__ import print_function
 
 import pickle
 import numpy as np
-import data_dirs
+from tools import data_dirs
 
 DATADIR = data_dirs.mnistm
 
@@ -22,7 +22,7 @@ def get_data(name):
 
 def load_mnistm(fileroot, partition):
     with open(fileroot + 'mnistm_data.pkl', 'rb') as f:
-        data = pickle.load(f)
+        data = pickle.load(f, encoding='latin1')
 
     if partition == 'train':
         images = np.concatenate((data['train_images'],
