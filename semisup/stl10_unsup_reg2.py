@@ -36,6 +36,7 @@ flags.DEFINE_integer('eval_interval', 500,
 flags.DEFINE_float('learning_rate', 2e-4, 'Initial learning rate.')
 
 flags.DEFINE_integer('warmup_steps', 1000, 'Warmup steps.')
+flags.DEFINE_integer('num_unlabeled_images', 0, 'How many images to use from the unlabeled set.')
 
 flags.DEFINE_float('visit_weight_base', 0.5, 'Weight for visit loss.')
 flags.DEFINE_float('rvisit_weight', 1, 'Weight for reg visit loss.')
@@ -78,11 +79,11 @@ flags.DEFINE_bool('image_space_centroids', False, 'Use centroids in image space.
 print(FLAGS.learning_rate, FLAGS.__flags) # print all flags (useful when logging)
 
 import numpy as np
-from numpy.linalg import norm
 from semisup.backend import apply_envelope
 from backend import apply_envelope
 import semisup
 from tensorflow.contrib.data import Dataset
+from augment import apply_augmentation
 
 
 dataset_tools = import_module('tools.' + FLAGS.dataset)
@@ -94,11 +95,15 @@ image_shape = IMAGE_SHAPE
 
 def main(_):
   train_images, _ = dataset_tools.get_data('train')  # no train labels nowhere
-  #unlabeled_train_images, _ = dataset_tools.get_data('unlabeled', max_num=10000)  # extra images left for exploration
+  if FLAGS.num_unlabeled_images > 0:
+    unlabeled_train_images, _ = dataset_tools.get_data('unlabeled', max_num=FLAGS.num_unlabeled_images)
   test_images, test_labels = dataset_tools.get_data('test')
 
   if FLAGS.dataset == 'stl10':
-    train_images = np.vstack([train_images, test_images])
+    if FLAGS.num_unlabeled_images > 0:
+      train_images = np.vstack([train_images, unlabeled_train_images, test_images])
+    else:
+      train_images = np.vstack([train_images, test_images])
 
   if FLAGS.normalize_input:
     train_images = (train_images - 128.) / 128.
@@ -110,28 +115,17 @@ def main(_):
   image_shape_crop = [64, 64, 3]
   c_test_imgs = test_images[:, 16:80, 16:80]
 
+
+  image_shape_crop = [64, 64, 3]
+
+  def aug(image):
+    return apply_augmentation(image, target_shape=image_shape_crop, params=dataset_tools.augmentation_params)
+
   def random_crop(image):
     image_size = image_shape_crop[0]
     image = tf.random_crop(image, [image_size, image_size, 3])
 
     return image
-
-  def add_noise(image, std=0.05):
-    noise = tf.random_normal(shape=image_shape, mean=0.0, stddev=std, dtype=tf.float32)
-    return image + noise
-
-  def flip(image):
-    return tf.image.random_flip_left_right(image)
-
-  def brightness_contrast(image):
-    image = tf.image.random_brightness(image, max_delta=1.3)
-    return tf.image.random_contrast(image, lower=0.2, upper=1.8)
-
-  def hue(image):
-    return tf.image.random_hue(image, max_delta=0.1)
-
-  def clip(image):
-    return tf.clip_by_value(image, -1., 1.)
 
   graph = tf.Graph()
   with graph.as_default():
@@ -152,12 +146,7 @@ def main(_):
     # get multiple augmented versions of the same image - they should later have similar embeddings
     augmented_set = augmented_set.interleave(lambda x: Dataset.from_tensors(x).repeat(rf), cycle_length=1, block_length=rf)
 
-    augmented_set = augmented_set.map(add_noise)
-    augmented_set = augmented_set.map(flip)
-    augmented_set = augmented_set.map(random_crop, num_threads=nt, output_buffer_size=b)
-    augmented_set = augmented_set.map(brightness_contrast, num_threads=nt, output_buffer_size=b)
-    augmented_set = augmented_set.map(hue, num_threads=nt, output_buffer_size=b)
-    augmented_set = augmented_set.map(clip, num_threads=nt, output_buffer_size=b)
+    augmented_set = augmented_set.map(aug, num_threads=nt, output_buffer_size=b)
 
     dataset = dataset.map(random_crop, num_threads=nt, output_buffer_size=b)
     dataset = dataset.batch(FLAGS.unsup_batch_size).repeat()

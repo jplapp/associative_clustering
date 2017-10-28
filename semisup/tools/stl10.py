@@ -112,10 +112,13 @@ def pick_fold(images, labels, fold=-1):
 
 # Dataset specific augmentation parameters.
 augmentation_params = dict()
-augmentation_params['max_crop_percentage'] = 0.2
+augmentation_params['max_crop_percentage'] = 0.33
 augmentation_params['brightness_max_delta'] = 1.3
-augmentation_params['saturation_lower'] = 0.5
+augmentation_params['saturation_lower'] = 0.7
 augmentation_params['saturation_upper'] = 1.2
+augmentation_params['contrast_lower'] = 0.2
+augmentation_params['contrast_upper'] = 1.8
 augmentation_params['hue_max_delta'] = 0.1
 augmentation_params['gray_prob'] = 0.5
-augmentation_params['max_rotate_angle'] = 10
+augmentation_params['noise_std'] = 0.05
+augmentation_params['max_rotate_angle'] = 0
