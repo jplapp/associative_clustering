@@ -14,6 +14,7 @@ def rotate(x, degrees):
 
 def apply_augmentation(image, target_shape, params):
   ap = params
+  print(image.shape)
   with tf.name_scope('augmentation'):
     shape = tf.shape(image)
     # rotation
@@ -42,18 +43,28 @@ def apply_augmentation(image, target_shape, params):
       # assert crop_shape.get_shape() == 2, 'crop shape = {}'.format(crop_shape)
       x = tf.cast(crop_shape, tf.int32)
       cropped_h, cropped_w, _ = tf.unstack(x)
-      image = tf.random_crop(image, [cropped_h, cropped_w, 3])
+      image = tf.random_crop(image, [cropped_h, cropped_w, target_shape[2]])
       image = tf.image.resize_images(image, target_shape[:2], method=ResizeMethod.NEAREST_NEIGHBOR)
 
-    image = tf.image.random_flip_left_right(image)
+    if "flip" in ap and ap['flip']:
+      image = tf.image.random_flip_left_right(image)
 
-    image = tf.image.random_saturation(image, lower=ap['saturation_lower'], upper=ap['saturation_upper'])
-    image = tf.image.random_brightness(image, max_delta=ap['brightness_max_delta'])
-    image = tf.image.random_contrast(image, lower=ap['contrast_lower'], upper=ap['contrast_upper'])
-    image = tf.image.random_hue(image, max_delta=ap['hue_max_delta'])
+    if "saturation_lower" in ap:
+      image = tf.image.random_saturation(image, lower=ap["saturation_lower"], upper=ap["saturation_upper"])
+
+    if "brightness_max_delta" in ap:
+      image = tf.image.random_brightness(image, max_delta=ap["brightness_max_delta"])
+
+    if "contrast_lower" in ap:
+      image = tf.image.random_contrast(image, lower=ap["contrast_lower"], upper=ap["contrast_upper"])
+
+    if "hue_max_delta" in ap:
+      image = tf.image.random_hue(image, max_delta=ap["hue_max_delta"])
 
     noise = tf.random_normal(shape=target_shape, mean=0.0, stddev=ap['noise_std'], dtype=tf.float32)
     image = image + noise
+
+    image.set_shape(target_shape)
 
     image = tf.clip_by_value(image, -1., 1.)
   return image

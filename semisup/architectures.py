@@ -94,9 +94,10 @@ def svhn_model(inputs,
         tf.summary.image('Inputs', inputs, max_outputs=3)
 
     net = inputs
-    mean = tf.reduce_mean(net, [1, 2], True)
-    std = tf.reduce_mean(tf.square(net - mean), [1, 2], True)
-    net = (net - mean) / (std + 1e-5)
+    #mean = tf.reduce_mean(net, [1, 2], True)
+    #std = tf.reduce_mean(tf.square(net - mean), [1, 2], True)
+    #net = (net - mean) / (std + 1e-5)
+
     with slim.arg_scope(
             [slim.conv2d, slim.fully_connected],
             activation_fn=tf.nn.elu,

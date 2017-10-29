@@ -121,4 +121,5 @@ augmentation_params['contrast_upper'] = 1.8
 augmentation_params['hue_max_delta'] = 0.1
 augmentation_params['gray_prob'] = 0.5
 augmentation_params['noise_std'] = 0.05
+augmentation_params['flip'] = True
 augmentation_params['max_rotate_angle'] = 0
