@@ -284,6 +284,16 @@ def main(_):
     print('Test error: %.2f %%' % (100 - score * 100))
     print('final_score', score)
 
+    #TODO: log the following for the final run:
+    #  test_error
+    #  train_loss
+    #  reg_loss
+    #  estimated_error
+    #  centroid_norm
+    #  emb_norm
+    #  k_means_score
+    #  svm_score
+
 
 if __name__ == '__main__':
   app.run()
