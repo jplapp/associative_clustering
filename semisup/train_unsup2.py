@@ -284,15 +284,15 @@ def main(_):
     print('Test error: %.2f %%' % (100 - score * 100))
     print('final_score', score)
 
-    #TODO: log the following for the final run:
-    #  test_error
-    #  train_loss
-    #  reg_loss
-    #  estimated_error
-    #  centroid_norm
-    #  emb_norm
-    #  k_means_score
-    #  svm_score
+    print('@@test_error:%.4f' % score)
+    print('@@train_loss:%.4f' % train_loss)
+    print('@@reg_loss:%.4f' % reg_loss)
+    print('@@estimated_error:%.4f' % estimated_error)
+    print('@@centroid_norm:%.4f' % c_n)
+    print('@@emb_norm:%.4f' % e_n)
+    print('@@k_score:%.4f' % k_score)
+    print('@@svm_score:%.4f' % 0)
+    
 
 
 if __name__ == '__main__':
