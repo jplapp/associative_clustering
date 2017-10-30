@@ -950,7 +950,9 @@ def calc_correct_logit_score(preds, lbls, num_labels):
   # this can be done using the hungarian algorithm
   # (it is not allowed to assign two clusters to the same class label, even if that would benefit overall score
 
-  conf_mtx = confusion_matrix(lbls, preds, num_labels)
+  # we need the transposed here, to get the correct confusion relationship back in the original label space
+  conf_mtx = confusion_matrix(preds, lbls, num_labels)
+
   assi = linear_sum_assignment(-conf_mtx)
   i = np.argsort(assi[1])
 
