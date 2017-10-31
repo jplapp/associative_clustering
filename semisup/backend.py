@@ -25,6 +25,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from scipy.optimize import linear_sum_assignment
+from sklearn import svm
 
 
 def show_sample_img(img):
@@ -910,7 +911,7 @@ class SemisupModel(object):
           show_sample_img_inline(sup_imgs[inds])
     return indices
 
-  def calc_opt_logit_score(self, preds, lbls, sess):
+  def calc_opt_logit_score(self, preds, lbls, k=None):
     # for the correct cluster score, we have to match clusters to classes
     # to do this, we can use the test labels to get the optimal matching
     # as in the literature, only the best clustering of all possible clustering counts
@@ -919,9 +920,12 @@ class SemisupModel(object):
     #   typically only happens in cases of low accuracy
     #   -> use calc_correct_logit_score instead
 
-    pred_map = np.ones(self.num_labels, np.int) * -1
+    if k is None:
+      k = self.num_labels
 
-    for i in range(self.num_labels):
+    pred_map = np.ones(k, np.int) * -1
+
+    for i in range(k):
       samples_with_pred_i = (preds == i)
       labels = np.bincount(lbls[samples_with_pred_i])
       if len(labels) > 0:
@@ -934,6 +938,25 @@ class SemisupModel(object):
     conf_mtx = confusion_matrix(lbls, preds, self.num_labels)
 
     return conf_mtx, np.mean(preds == lbls)
+
+  def train_and_eval_svm(self, train_images, train_labels, test_images, test_labels, sess, num_samples=5000):
+    # train svm
+    X = self.calc_embedding(train_images[:num_samples], self.test_emb, sess)
+    y = train_labels[:num_samples]
+
+    clf = svm.SVC()
+    clf.fit(X, y)
+
+    y_train_pred = clf.predict(X)
+    train_accuracy = np.mean(y_train_pred == y)
+
+    test_embs = self.calc_embedding(test_images, self.test_emb, sess)
+
+    y_t = clf.predict(test_embs)
+    test_accuracy = np.mean(y_t == test_labels)
+
+    return test_accuracy, train_accuracy
+
 
 
 
@@ -957,6 +980,6 @@ def calc_correct_logit_score(preds, lbls, num_labels):
 
   acc = conf_mtx[assi].sum() / conf_mtx.sum()
 
-  return conf_mtx[i], acc
+  return conf_mtx[:,i], acc
 
 from sklearn.cluster import KMeans
