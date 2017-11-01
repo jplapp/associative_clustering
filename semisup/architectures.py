@@ -70,15 +70,16 @@ def densenet_model(inputs,
 
 
 def resnet_cifar_model(inputs,
-                 is_training=True,
-                 emb_size=128,
-                 l2_weight=1e-4,
-                 img_shape=None,
-                 new_shape=None,
-                 image_summary=False,
-                 augmentation_function=None,
-                 dropout_keep_prob=1,
-                 batch_norm_decay=0.99):
+                       is_training=True,
+                       emb_size=128,
+                       l2_weight=1e-4,
+                       img_shape=None,
+                       new_shape=None,
+                       image_summary=False,
+                       augmentation_function=None,
+                       dropout_keep_prob=1,
+                       batch_norm_decay=0.99,
+                       resnet_size=32):
     from official.resnet import resnet_model
 
     inputs = tf.cast(inputs, tf.float32)
@@ -95,11 +96,16 @@ def resnet_cifar_model(inputs,
     if image_summary:
         tf.summary.image('Inputs', inputs, max_outputs=3)
     net = inputs
-    network = resnet_model.cifar10_resnet_v2_generator(
-        32, emb_size)
+    batch_size = net.get_shape()[0]
+    network = resnet_model.cifar10_resnet_v2_generator(resnet_size, 1)
+    _ = network(net, is_training)
+    pre_emb = tf.get_default_graph().get_tensor_by_name('final_avg_pool:0')
+    emb = tf.reshape(pre_emb, [batch_size, -1])
+    emb = tf.layers.dense(inputs=emb, units=emb_size)
+    emb = tf.identity(emb, 'embeddings')
 
-    emb = network(net, is_training)
     return emb
+
 
 def svhn_model(inputs,
                is_training=True,
