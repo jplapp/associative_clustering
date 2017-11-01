@@ -70,16 +70,16 @@ def densenet_model(inputs,
 
 
 def resnet_cifar_model(inputs,
-                       is_training=True,
-                       emb_size=128,
-                       l2_weight=1e-4,
-                       img_shape=None,
-                       new_shape=None,
-                       image_summary=False,
-                       augmentation_function=None,
-                       dropout_keep_prob=1,
-                       batch_norm_decay=0.99):
-    from resnet import resnet_model
+                 is_training=True,
+                 emb_size=128,
+                 l2_weight=1e-4,
+                 img_shape=None,
+                 new_shape=None,
+                 image_summary=False,
+                 augmentation_function=None,
+                 dropout_keep_prob=1,
+                 batch_norm_decay=0.99):
+    from official.resnet import resnet_model
 
     inputs = tf.cast(inputs, tf.float32)
     if new_shape is not None:
@@ -95,13 +95,11 @@ def resnet_cifar_model(inputs,
     if image_summary:
         tf.summary.image('Inputs', inputs, max_outputs=3)
     net = inputs
-    net = (net - 128.0) / 128.0
     network = resnet_model.cifar10_resnet_v2_generator(
         32, emb_size)
 
     emb = network(net, is_training)
     return emb
-
 
 def svhn_model(inputs,
                is_training=True,
