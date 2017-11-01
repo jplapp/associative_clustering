@@ -69,6 +69,39 @@ def densenet_model(inputs,
     return emb
 
 
+def resnet_cifar_model(inputs,
+                 is_training=True,
+                 emb_size=128,
+                 l2_weight=1e-4,
+                 img_shape=None,
+                 new_shape=None,
+                 image_summary=False,
+                 augmentation_function=None,
+                 dropout_keep_prob=1,
+                 batch_norm_decay=0.99):
+    from resnet import resnet_model
+
+    inputs = tf.cast(inputs, tf.float32)
+    if new_shape is not None:
+        shape = new_shape
+        inputs = tf.image.resize_images(
+            inputs,
+            tf.constant(new_shape[:2]),
+            method=tf.image.ResizeMethod.BILINEAR)
+    else:
+        shape = img_shape
+    if is_training and augmentation_function is not None:
+        inputs = augmentation_function(inputs, shape)
+    if image_summary:
+        tf.summary.image('Inputs', inputs, max_outputs=3)
+    net = inputs
+    net = (net - 128.0) / 128.0
+    network = resnet_model.cifar10_resnet_v2_generator(
+        32, emb_size)
+
+    emb = network(net, is_training)
+    return emb
+
 def svhn_model(inputs,
                is_training=True,
                augmentation_function=None,
