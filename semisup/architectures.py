@@ -85,7 +85,7 @@ def resnet_cifar_model(inputs,
     def _find_tensor(name, graph=tf.get_default_graph()):
         for op in graph.get_operations():
             if name in op.name:
-                return op
+                return op.outputs[0]
         return None
 
     inputs = tf.cast(inputs, tf.float32)
@@ -102,11 +102,10 @@ def resnet_cifar_model(inputs,
     if image_summary:
         tf.summary.image('Inputs', inputs, max_outputs=3)
     net = inputs
-    batch_size = net.get_shape().as_list()[0]
     network = resnet_model.cifar10_resnet_v2_generator(resnet_size, 1)
     logits = network(net, is_training)
-    pre_emb = _find_tensor('final_avg_pool:0', logits.graph)
-    emb = tf.reshape(pre_emb, [batch_size, -1])
+    pre_emb = _find_tensor('final_avg_pool')
+    emb = tf.contrib.slim.flatten(pre_emb)
     emb = tf.layers.dense(inputs=emb, units=emb_size)
     emb = tf.identity(emb, 'embeddings')
 
