@@ -29,16 +29,17 @@ import tensorflow.contrib.slim as slim
 
 from semisup.densenet import DenseNet
 
+
 def densenet_model(inputs,
-               is_training=True,
-               emb_size=128,
-               l2_weight=1e-4,
-               img_shape=None,
-               new_shape=None,
-               image_summary=False,
-               augmentation_function=None,
-               dropout_keep_prob = 1,
-               batch_norm_decay=0.99):  # pylint: disable=unused-argument
+                   is_training=True,
+                   emb_size=128,
+                   l2_weight=1e-4,
+                   img_shape=None,
+                   new_shape=None,
+                   image_summary=False,
+                   augmentation_function=None,
+                   dropout_keep_prob=1,
+                   batch_norm_decay=0.99):  # pylint: disable=unused-argument
     """Construct the image-to-embedding vector model."""
     inputs = tf.cast(inputs, tf.float32)
 
@@ -52,13 +53,13 @@ def densenet_model(inputs,
         tf.map_fn(lambda frame: tf.image.per_image_standardization(frame), inputs)
 
     print(inputs.shape)
-    shape = (inputs.shape[1],inputs.shape[2],inputs.shape[3])
+    shape = (inputs.shape[1], inputs.shape[2], inputs.shape[3])
     densenet = DenseNet(data_shape=shape, n_classes=10, model_type='DenseNet', keep_prob=dropout_keep_prob,
                         growth_rate=12, depth=40, is_training=is_training)
 
     emb = densenet.build_embeddings(inputs)
 
-    #with slim.arg_scope(
+    # with slim.arg_scope(
     #        [slim.fully_connected],
     #        activation_fn=tf.nn.elu,
     #        weights_regularizer=slim.l2_regularizer(l2_weight),
@@ -94,9 +95,9 @@ def svhn_model(inputs,
         tf.summary.image('Inputs', inputs, max_outputs=3)
 
     net = inputs
-    #mean = tf.reduce_mean(net, [1, 2], True)
-    #std = tf.reduce_mean(tf.square(net - mean), [1, 2], True)
-    #net = (net - mean) / (std + 1e-5)
+    # mean = tf.reduce_mean(net, [1, 2], True)
+    # std = tf.reduce_mean(tf.square(net - mean), [1, 2], True)
+    # net = (net - mean) / (std + 1e-5)
 
     with slim.arg_scope(
             [slim.conv2d, slim.fully_connected],
@@ -124,18 +125,17 @@ def svhn_model(inputs,
 
 
 def svhn_model_from_encoder(inputs,
-               is_training=True,
-               augmentation_function=None,
-               emb_size=128,
-               l2_weight=1e-4,
-               img_shape=None,
-               new_shape=None,
-               image_summary=False,
-               dropout_keep_prob=1,
-               batch_norm_decay=0.99):  # pylint: disable=unused-argument
+                            is_training=True,
+                            augmentation_function=None,
+                            emb_size=128,
+                            l2_weight=1e-4,
+                            img_shape=None,
+                            new_shape=None,
+                            image_summary=False,
+                            dropout_keep_prob=1,
+                            batch_norm_decay=0.99):  # pylint: disable=unused-argument
     """Same as svhn model, but adapted to autoencoder"""
     inputs = tf.cast(inputs, tf.float32)
-
 
     net = inputs
 
@@ -145,24 +145,24 @@ def svhn_model_from_encoder(inputs,
             weights_regularizer=slim.l2_regularizer(l2_weight)):
         with slim.arg_scope([slim.dropout], is_training=is_training):
             with tf.variable_scope('level_1'):
-              net = slim.conv2d(net, 32, [3, 3], scope='conv1')
-              net = slim.conv2d(net, 32, [3, 3], scope='conv1_2')
-              net = slim.conv2d(net, 32, [3, 3], scope='conv1_3')
-              net = slim.max_pool2d(net, [2, 2], scope='pool1')  # 14
+                net = slim.conv2d(net, 32, [3, 3], scope='conv1')
+                net = slim.conv2d(net, 32, [3, 3], scope='conv1_2')
+                net = slim.conv2d(net, 32, [3, 3], scope='conv1_3')
+                net = slim.max_pool2d(net, [2, 2], scope='pool1')  # 14
             with tf.variable_scope('level_2'):
-              net = slim.conv2d(net, 64, [3, 3], scope='conv2_1')
-              net = slim.conv2d(net, 64, [3, 3], scope='conv2_2')
-              net = slim.conv2d(net, 64, [3, 3], scope='conv2_3')
-              net = slim.max_pool2d(net, [2, 2], scope='pool2')  # 7
+                net = slim.conv2d(net, 64, [3, 3], scope='conv2_1')
+                net = slim.conv2d(net, 64, [3, 3], scope='conv2_2')
+                net = slim.conv2d(net, 64, [3, 3], scope='conv2_3')
+                net = slim.max_pool2d(net, [2, 2], scope='pool2')  # 7
             with tf.variable_scope('level_3'):
-              net = slim.conv2d(net, 128, [3, 3], scope='conv3')
-              net = slim.conv2d(net, 128, [3, 3], scope='conv3_2')
-              net = slim.conv2d(net, 128, [3, 3], scope='conv3_3')
-              net = slim.max_pool2d(net, [2, 2], scope='pool3')  # 3
+                net = slim.conv2d(net, 128, [3, 3], scope='conv3')
+                net = slim.conv2d(net, 128, [3, 3], scope='conv3_2')
+                net = slim.conv2d(net, 128, [3, 3], scope='conv3_3')
+                net = slim.max_pool2d(net, [2, 2], scope='pool3')  # 3
             with tf.variable_scope('level_4'):
-              net = slim.flatten(net, scope='flatten')
-              with slim.arg_scope([slim.fully_connected], normalizer_fn=None):
-                  emb = slim.fully_connected(net, emb_size, scope='fc1')
+                net = slim.flatten(net, scope='flatten')
+                with slim.arg_scope([slim.fully_connected], normalizer_fn=None):
+                    emb = slim.fully_connected(net, emb_size, scope='fc1')
 
     return emb
 
@@ -277,14 +277,14 @@ def stl10_model(inputs,
 
 
 def stl10_model_direct(inputs,
-                is_training=True,
-                augmentation_function=None,
-                emb_size=128,
-                img_shape=None,
-                new_shape=None,
-                dropout_keep_prob=None,
-                image_summary=False,
-                batch_norm_decay=0.99):
+                       is_training=True,
+                       augmentation_function=None,
+                       emb_size=128,
+                       img_shape=None,
+                       new_shape=None,
+                       dropout_keep_prob=None,
+                       image_summary=False,
+                       batch_norm_decay=0.99):
     """Construct the image-to-embedding model."""
     inputs = tf.cast(inputs, tf.float32)
 
@@ -303,23 +303,20 @@ def stl10_model_direct(inputs,
             with slim.arg_scope([slim.conv2d], padding='SAME'):
                 # 96
                 with tf.variable_scope('level_1'):
-
                     net = slim.conv2d(net, 32, [3, 3], scope='conv_s2')  #
                     net = slim.conv2d(net, 64, [3, 3], stride=2, scope='conv1')
                     # 48
                     net = slim.max_pool2d(net, [3, 3], stride=2, scope='pool1')  #
-                    #net = slim.dropout(net, dropout_keep_prob,scope='dropout1')
+                    # net = slim.dropout(net, dropout_keep_prob,scope='dropout1')
 
                 # 24
                 with tf.variable_scope('level_2'):
-
                     net = slim.conv2d(net, 64, [3, 3], scope='conv2')
                     net = slim.conv2d(net, 128, [3, 3], scope='conv2_2')
                     net = slim.max_pool2d(net, [2, 2], stride=2, scope='pool2')  #
 
-                    #net = slim.dropout(net, dropout_keep_prob, scope='dropout2')
+                    # net = slim.dropout(net, dropout_keep_prob, scope='dropout2')
                 with tf.variable_scope('level_3'):
-
                     # 11
                     net = slim.conv2d(net, 128, [3, 3], scope='conv3_1')
                     net = slim.conv2d(net, 256, [3, 3], scope='conv3_2')
@@ -327,9 +324,8 @@ def stl10_model_direct(inputs,
                     # 5
                     net = slim.conv2d(net, 128, [3, 3], scope='conv4')
                 with tf.variable_scope('level_4'):
-
                     net = slim.flatten(net, scope='flatten')
-                    #net = slim.dropout(net, dropout_keep_prob,  scope='dropout3')
+                    # net = slim.dropout(net, dropout_keep_prob,  scope='dropout3')
 
                     with slim.arg_scope([slim.fully_connected], normalizer_fn=None):
                         emb = slim.fully_connected(
@@ -350,7 +346,7 @@ def mnist_model(inputs,
 
     """Construct the image-to-embedding vector model."""
 
-    inputs = tf.cast(inputs, tf.float32)# / 255.0
+    inputs = tf.cast(inputs, tf.float32)  # / 255.0
     if new_shape is not None:
         shape = new_shape
         inputs = tf.image.resize_images(
@@ -365,7 +361,6 @@ def mnist_model(inputs,
 
     if augmentation_function is not None:
         tf.map_fn(lambda frame: tf.image.per_image_standardization(frame), inputs)
-
 
     net = inputs
     with slim.arg_scope(
@@ -391,19 +386,19 @@ def mnist_model(inputs,
 
 
 def mnist_model_dropout(inputs,
-                is_training=True,
-                emb_size=128,
-                l2_weight=1e-3,
-                batch_norm_decay=None,
-                img_shape=None,
-                new_shape=None,
-                dropout_keep_prob = 0.8,
-                augmentation_function=None,
-                image_summary=False):  # pylint: disable=unused-argument
+                        is_training=True,
+                        emb_size=128,
+                        l2_weight=1e-3,
+                        batch_norm_decay=None,
+                        img_shape=None,
+                        new_shape=None,
+                        dropout_keep_prob=0.8,
+                        augmentation_function=None,
+                        image_summary=False):  # pylint: disable=unused-argument
 
     """Construct the image-to-embedding vector model."""
 
-    inputs = tf.cast(inputs, tf.float32) # / 255.0
+    inputs = tf.cast(inputs, tf.float32)  # / 255.0
     if new_shape is not None:
         shape = new_shape
         inputs = tf.image.resize_images(
@@ -425,18 +420,17 @@ def mnist_model_dropout(inputs,
             activation_fn=tf.nn.elu,
             weights_regularizer=slim.l2_regularizer(l2_weight)):
         with slim.arg_scope([slim.dropout], is_training=is_training):
-
             net = slim.conv2d(net, 32, [3, 3], scope='conv1_1')
             net = slim.conv2d(net, 32, [3, 3], scope='conv1_2')
             net = slim.max_pool2d(net, [2, 2], scope='pool1')  # 14
             net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-                           scope='dropout1')
+                               scope='dropout1')
 
             net = slim.conv2d(net, 64, [3, 3], scope='conv2_1')
             net = slim.conv2d(net, 64, [3, 3], scope='conv2_2')
             net = slim.max_pool2d(net, [2, 2], scope='pool2')  # 7
             net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-                           scope='dropout2')
+                               scope='dropout2')
 
             net = slim.conv2d(net, 128, [3, 3], scope='conv3_1')
             net = slim.conv2d(net, 128, [3, 3], scope='conv3_2')
@@ -444,7 +438,7 @@ def mnist_model_dropout(inputs,
 
             net = slim.flatten(net, scope='flatten')
 
-            #net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
+            # net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
             #               scope='dropout3')
 
             emb = slim.fully_connected(net, emb_size, scope='fc1')
@@ -453,19 +447,19 @@ def mnist_model_dropout(inputs,
 
 
 def mnist_model_dropout_autoencoder(inputs,
-                is_training=True,
-                emb_size=128,
-                l2_weight=1e-3,
-                batch_norm_decay=None,
-                img_shape=None,
-                new_shape=None,
-                dropout_keep_prob = 0.8,
-                augmentation_function=None,
-                image_summary=False):  # pylint: disable=unused-argument
+                                    is_training=True,
+                                    emb_size=128,
+                                    l2_weight=1e-3,
+                                    batch_norm_decay=None,
+                                    img_shape=None,
+                                    new_shape=None,
+                                    dropout_keep_prob=0.8,
+                                    augmentation_function=None,
+                                    image_summary=False):  # pylint: disable=unused-argument
 
     """Construct the image-to-embedding vector model."""
 
-    inputs = tf.cast(inputs, tf.float32) #/ 255.0
+    inputs = tf.cast(inputs, tf.float32)  # / 255.0
 
     net = inputs
 
@@ -474,31 +468,30 @@ def mnist_model_dropout_autoencoder(inputs,
             activation_fn=tf.nn.elu,
             weights_regularizer=slim.l2_regularizer(l2_weight)):
         with slim.arg_scope([slim.dropout], is_training=is_training):
-
             net = slim.conv2d(net, 32, [3, 3], scope='conv1_1')
             net = slim.conv2d(net, 32, [3, 3], scope='conv1_2')
             net = slim.max_pool2d(net, [2, 2], scope='pool1')  # 14
             net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-                           scope='dropout1')
+                               scope='dropout1')
 
             net = slim.conv2d(net, 64, [3, 3], scope='conv2_1')
             net = slim.conv2d(net, 64, [3, 3], scope='conv2_2')
             net = slim.max_pool2d(net, [2, 2], scope='pool2')  # 7
             net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-                           scope='dropout2')
+                               scope='dropout2')
 
             net = slim.conv2d(net, 128, [3, 3], scope='conv3_1')
             net = slim.conv2d(net, 128, [3, 3], scope='conv3_2')
             net = slim.max_pool2d(net, [2, 2], scope='pool3')  # 3
 
             net = slim.flatten(net, scope='flatten')
-            #net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-             #              scope='dropout3')
+            # net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
+            #              scope='dropout3')
 
             emb = slim.fully_connected(net, emb_size, scope='fc1')
 
             # DECODE
-            dec_emb = slim.fully_connected(emb, 3*3*128, scope='dec_fc1')
+            dec_emb = slim.fully_connected(emb, 3 * 3 * 128, scope='dec_fc1')
             net = tf.reshape(dec_emb, [-1, 3, 3, 128])
 
             upsample1 = tf.image.resize_images(net, size=(7, 7), method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
@@ -521,24 +514,23 @@ def mnist_model_dropout_autoencoder(inputs,
 
             # decoder
 
-
     return logits, emb
 
 
 def svhn_model_dropout_autoencoder(inputs,
-                is_training=True,
-                emb_size=128,
-                l2_weight=1e-3,
-                batch_norm_decay=None,
-                img_shape=None,
-                new_shape=None,
-                dropout_keep_prob = 0.8,
-                augmentation_function=None,
-                image_summary=False):  # pylint: disable=unused-argument
+                                   is_training=True,
+                                   emb_size=128,
+                                   l2_weight=1e-3,
+                                   batch_norm_decay=None,
+                                   img_shape=None,
+                                   new_shape=None,
+                                   dropout_keep_prob=0.8,
+                                   augmentation_function=None,
+                                   image_summary=False):  # pylint: disable=unused-argument
 
     """Construct the image-to-embedding vector model."""
 
-    inputs = tf.cast(inputs, tf.float32) #/ 255.0
+    inputs = tf.cast(inputs, tf.float32)  # / 255.0
 
     net = inputs
 
@@ -547,31 +539,30 @@ def svhn_model_dropout_autoencoder(inputs,
             activation_fn=tf.nn.elu,
             weights_regularizer=slim.l2_regularizer(l2_weight)):
         with slim.arg_scope([slim.dropout], is_training=is_training):
-
             net = slim.conv2d(net, 32, [3, 3], scope='conv1_1')
             net = slim.conv2d(net, 32, [3, 3], scope='conv1_2')
             net = slim.max_pool2d(net, [2, 2], scope='pool1')  # 14
             net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-                           scope='dropout1')
+                               scope='dropout1')
 
             net = slim.conv2d(net, 64, [3, 3], scope='conv2_1')
             net = slim.conv2d(net, 64, [3, 3], scope='conv2_2')
             net = slim.max_pool2d(net, [2, 2], scope='pool2')  # 7
             net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-                           scope='dropout2')
+                               scope='dropout2')
 
             net = slim.conv2d(net, 128, [3, 3], scope='conv3_1')
             net = slim.conv2d(net, 128, [3, 3], scope='conv3_2')
             net = slim.max_pool2d(net, [2, 2], scope='pool3')  # 3
 
             net = slim.flatten(net, scope='flatten')
-            #net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-             #              scope='dropout3')
+            # net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
+            #              scope='dropout3')
 
             emb = slim.fully_connected(net, emb_size, scope='fc1')
 
             # DECODE
-            dec_emb = slim.fully_connected(emb, 3*3*128, scope='dec_fc1')
+            dec_emb = slim.fully_connected(emb, 3 * 3 * 128, scope='dec_fc1')
             net = tf.reshape(dec_emb, [-1, 3, 3, 128])
 
             upsample1 = tf.image.resize_images(net, size=(7, 7), method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
@@ -594,20 +585,19 @@ def svhn_model_dropout_autoencoder(inputs,
 
             # decoder
 
-
     return logits, emb
 
 
 def mnist_model_dropout_normalized(inputs,
-                is_training=True,
-                emb_size=128,
-                l2_weight=1e-3,
-                batch_norm_decay=None,
-                img_shape=None,
-                new_shape=None,
-                dropout_keep_prob = 0.8,
-                augmentation_function=None,
-                image_summary=False):  # pylint: disable=unused-argument
+                                   is_training=True,
+                                   emb_size=128,
+                                   l2_weight=1e-3,
+                                   batch_norm_decay=None,
+                                   img_shape=None,
+                                   new_shape=None,
+                                   dropout_keep_prob=0.8,
+                                   augmentation_function=None,
+                                   image_summary=False):  # pylint: disable=unused-argument
 
     """Construct the image-to-embedding vector model."""
 
@@ -633,18 +623,17 @@ def mnist_model_dropout_normalized(inputs,
             activation_fn=tf.nn.elu,
             weights_regularizer=slim.l2_regularizer(l2_weight)):
         with slim.arg_scope([slim.dropout], is_training=is_training):
-
             net = slim.conv2d(net, 32, [3, 3], scope='conv1_1')
             net = slim.conv2d(net, 32, [3, 3], scope='conv1_2')
             net = slim.max_pool2d(net, [2, 2], scope='pool1')  # 14
             net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-                           scope='dropout1')
+                               scope='dropout1')
 
             net = slim.conv2d(net, 64, [3, 3], scope='conv2_1')
             net = slim.conv2d(net, 64, [3, 3], scope='conv2_2')
             net = slim.max_pool2d(net, [2, 2], scope='pool2')  # 7
             net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-                           scope='dropout2')
+                               scope='dropout2')
 
             net = slim.conv2d(net, 128, [3, 3], scope='conv3_1')
             net = slim.conv2d(net, 128, [3, 3], scope='conv3_2')
@@ -653,7 +642,7 @@ def mnist_model_dropout_normalized(inputs,
             net = slim.flatten(net, scope='flatten')
 
             net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-                           scope='dropout3')
+                               scope='dropout3')
 
             emb = slim.fully_connected(net, emb_size, scope='fc1')
 
