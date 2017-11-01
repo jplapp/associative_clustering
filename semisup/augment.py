@@ -1,13 +1,16 @@
 import tensorflow as tf
 import cv2
 from tensorflow.python.ops.image_ops_impl import ResizeMethod
+import numpy as np
 
 
 def rotate(x, degrees):
   def _rotate(x, degrees):
     rows, cols = x.shape[:2]
     rot_m = cv2.getRotationMatrix2D((cols / 2, rows / 2), degrees, 1)
-    return cv2.warpAffine(x, rot_m, (cols, rows))
+    res= cv2.warpAffine(x, rot_m, (cols, rows))
+    res = np.reshape(res, res.shape+(x.shape[2],))
+    return res
 
   return tf.py_func(_rotate, [x, degrees], [tf.float32], name='rotate')
 
@@ -26,7 +29,8 @@ def apply_augmentation(image, target_shape, params):
         dtype=tf.float32,
         seed=None,
         name='random_angle')
-      image = tf.squeeze(rotate(image, angle))
+      r = rotate(image, angle)
+      image = r[0]
 
     # cropping
     if ap['max_crop_percentage']:
