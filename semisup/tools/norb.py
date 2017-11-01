@@ -20,9 +20,9 @@ def get_data(name):
     images = np.array([])
     labels = np.array([])
     for fold in ['01', '02']:
-        with open(getPath(name, fold, 'dat')) as f:
+        with open(getPath(name, fold, 'dat'), encoding='latin1') as f:
             images = np.append(images, parseNORBFile(f))
-        with open(getPath(name, fold, 'cat')) as f:
+        with open(getPath(name, fold, 'cat'), encoding='latin1') as f:
             labels = np.append(labels, parseNORBFile(f))
     images = images.reshape([-1, IMAGE_SHAPE[0], IMAGE_SHAPE[1]])
     labels = np.repeat(labels, 2)  # left and right image
