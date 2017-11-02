@@ -296,8 +296,7 @@ class SemisupModel(object):
           weights_regularizer=slim.l2_regularizer(1e-4),
           scope='logit_fc')
 
-  def add_semisup_loss(self, a, b, labels, walker_weight=1.0, visit_weight=1.0, proximity_weight=None,
-                       normalize_along_classes=False, match_scale = 1.0, est_err=True):
+  def add_semisup_loss(self, a, b, labels, walker_weight=1.0, visit_weight=1.0, match_scale = 1.0, est_err=True):
     """Add semi-supervised classification loss to the model.
 
     The loss consists of two terms: "walker" and "visit".
@@ -334,13 +333,7 @@ class SemisupModel(object):
       scope='loss_aba')
     self.loss_aba = loss_aba
 
-    if normalize_along_classes:
-      self.add_visit_loss_class_normalized(p_ab, p_target, visit_weight)
-    else:
-      self.add_visit_loss(p_ab, visit_weight,'b')
-
-    if proximity_weight is not None:
-      self.add_visit_loss_bab(p_ab, p_ba, proximity_weight)
+    self.add_visit_loss(p_ab, visit_weight,'b')
 
     tf.summary.scalar('Loss_aba', loss_aba)
 
@@ -387,66 +380,6 @@ class SemisupModel(object):
 
     tf.summary.scalar('Loss_aba'+str(stop_gradient), loss_aba)
 
-  def add_semisup_centroid_loss(self, a, b, c, labels, walker_weight=1.0, visit_weight=1.0, visit_weight_c=1.0):
-    """Add semi-supervised classification loss to the model.
-
-    The loss consists of two terms: "walker" and "visit".
-
-    Args:
-      a: [N, emb_size] tensor with supervised embedding vectors.
-      b: [M, emb_size] tensor with unsupervised embedding vectors.
-      labels : [N] tensor with labels for supervised embeddings.
-      walker_weight: Weight coefficient of the "walker" loss.
-      visit_weight: Weight coefficient of the "visit" loss.
-    """
-
-    equality_matrix = tf.equal(tf.reshape(labels, [-1, 1]), labels)
-    equality_matrix = tf.cast(equality_matrix, tf.float32)
-    p_target = (equality_matrix / tf.reduce_sum(
-      equality_matrix, [1], keep_dims=True))
-
-    match_ab = tf.matmul(a, b, transpose_b=True, name='match_ab')
-    match_ca = tf.matmul(c, a, transpose_b=True, name='match_ca')
-
-    p_ab = tf.nn.softmax(match_ab, name='p_ab')
-    p_ba = tf.nn.softmax(tf.transpose(match_ab), name='p_ba')
-
-    p_ca = tf.nn.softmax(match_ca, name='p_ca')
-    p_ac = tf.nn.softmax(tf.transpose(match_ca), name='p_ac')
-
-    p_aba = tf.matmul(p_ab, p_ba, name='p_aba')
-    p_cac = tf.matmul(p_ca, p_ac, name='p_cac')
-    p_caba = tf.matmul(p_ca, p_aba, name='p_caba')
-    p_cabac = tf.matmul(p_caba, p_ac, name='p_cabac')
-
-    self.p_cabac = p_cabac
-    self.p_caba = p_caba
-    self.p_cac = p_cac
-    self.p_ca = p_ca
-    self.p_ac = p_ac
-    self.p_ab = p_ab
-    self.p_ba = p_ba
-    self.p_aba = p_aba
-
-    loss_cabac = tf.losses.softmax_cross_entropy(
-      p_target,
-      tf.log(1e-8 + p_cabac),
-      weights=walker_weight,
-      scope='loss_aba')
-
-    self.add_visit_loss(p_ca, visit_weight,'a')
-
-    self.add_visit_loss(p_caba, visit_weight_c,'ca')
-
-    self.p_a = tf.reduce_mean(
-      p_ca, [0], keep_dims=True, name='visit_prob_ca')
-
-    self.p_a_from_c = tf.reduce_mean(
-      p_caba, [0], keep_dims=True, name='visit_prob_caba')
-
-
-    tf.summary.scalar('Loss_aba', loss_cabac)
-
   def add_visit_loss(self, p, weight=1.0, name=''):
     """Add the "visit" loss to the model.
 
@@ -466,60 +399,6 @@ class SemisupModel(object):
 
     tf.summary.scalar('Loss_Visit'+name, visit_loss)
 
-  def add_visit_loss_class_normalized(self, p, p_target, weight=1.0):
-    """Add the "visit" loss to the model.
-
-    Args:
-      p: [N, M] tensor. Each row must be a valid probability distribution
-          (i.e. sum to 1.0)
-      p_target [N] tensor. See p_target from semisup_loss
-      weight: Loss weight.
-    """
-
-    scale_f = tf.diag_part(p_target)
-    p_norm = tf.transpose(tf.multiply(tf.transpose(p), scale_f))
-
-    visit_probability = tf.reduce_sum(
-      p_norm, [0], keep_dims=True, name='visit_prob')
-    visit_probability = visit_probability * (1 / tf.reduce_sum(visit_probability))
-
-    # compare with old one
-    visit_probability_old = tf.reduce_mean(
-      p, [0], keep_dims=True, name='visit_prob')
-
-    self.dif = tf.reduce_sum(visit_probability - visit_probability_old)
-    self.vp = visit_probability
-    self.vpo = visit_probability_old
-
-    t_nb = tf.shape(p)[1]
-    visit_loss = tf.losses.softmax_cross_entropy(
-        tf.fill([1, t_nb], 1.0 / tf.cast(t_nb, tf.float32)),
-        tf.log(1e-8 + visit_probability),
-        weights=weight,
-        scope='loss_visit')
-
-    tf.summary.scalar('Loss_Visit', visit_loss)
-
-  def add_visit_loss_bab(self, p_ab, p_ba, weight=1.0):
-    """Add the "visit" loss to the model.
-
-    Args:
-      p_ab, p_ba
-      weight: Loss weight.
-    """
-    p_bab = tf.matmul(p_ba, p_ab, name='p_bab')
-
-    visit_probability = tf.reduce_mean(p_bab, [0], name='visit_prob_bab', keep_dims=True)
-
-    t_nb = tf.shape(p_bab)[1]
-    visit_loss = tf.losses.softmax_cross_entropy(
-        tf.fill([1, t_nb], 1.0 / tf.cast(t_nb, tf.float32)),
-        tf.log(1e-8 + visit_probability),
-        weights=weight,
-        scope='loss_visit_bab')
-
-    tf.summary.scalar('Loss_Visit_bab', visit_loss)
-
   def add_logit_loss(self, logits, labels, weight=1.0, smoothing=0.0):
     """Add supervised classification loss to the model."""
 
@@ -529,43 +408,6 @@ class SemisupModel(object):
         scope='loss_logit',
         weights=weight,
         label_smoothing=smoothing)
-
-  def add_logit_regularization(self, logits, dist_weight=1.0, spike_weight=1.0):
-
-    props = tf.nn.softmax(logits)
-    self.props = props
-    # should sum to an equal distribution
-    dist = tf.reduce_sum(props, axis=0) / tf.cast(tf.shape(props)[0], tf.float32)
-    target = tf.cast(tf.constant(np.ones(self.num_labels) / self.num_labels), tf.float32)
-    self.dist = dist
-    self.target = target
-    logit_dist_loss = tf.losses.absolute_difference(
-      0,
-      tf.nn.l2_loss(target - dist),
-      scope='loss_logit_dist',
-      weights=dist_weight
-    )
-
-
-    # should have a 'spike' (one value equal one, the others equal zero
-    # loss function for every entry is thus x * (1-x)
-    oneminuslogits = tf.subtract(tf.cast(tf.constant(1), tf.float32), props)
-    dist_spike = tf.multiply(props, oneminuslogits)
-    target_spike = tf.fill(props.get_shape(), tf.cast(tf.constant(0), tf.float32))
-    self.dist_spike = dist_spike
-    self.target_spike = target_spike
-    logit_spike_loss = tf.losses.absolute_difference(
-      target_spike,
-      dist_spike,
-      scope='loss_logit_spike',
-      weights=spike_weight
-    )
-
-    self.logit_dist_loss = logit_dist_loss
-    self.logit_spike_loss = logit_spike_loss
-
-    tf.summary.scalar('loss_logit_dist', logit_dist_loss)
-    tf.summary.scalar('loss_logit_spike', logit_spike_loss)
 
   def create_walk_statistics(self, p_aba, equality_matrix):
     """Adds "walker" loss statistics to the graph.
@@ -675,242 +517,6 @@ class SemisupModel(object):
 
     return preds #np.mean(preds == test_labels)
 
-  def propose_samples(self, sup_imgs, sup_lbls, train_images, train_labels, sess, n_samples=1, vis=False):
-    sup_embs = self.calc_embedding(sup_imgs, self.test_emb, sess)
-    train_embs = self.calc_embedding(train_images, self.test_emb, sess)
-
-    match_ab = np.dot(sup_embs, np.transpose(train_embs))
-    p_ba = softmax(np.transpose(match_ab))
-
-    # add values from a that share class
-    preds = np.dot(p_ba, one_hot(np.asarray(sup_lbls, np.int64), depth=self.num_labels))
-
-    # calculate sample confidence: sample confidence + confidence of close-by_samples
-    sample_conf = np.var(preds, axis=1)
-    conf_thresh = np.percentile(sample_conf, 5)
-    print('conf threshold:', conf_thresh)
-    unconf_sample_indices = np.where(sample_conf < conf_thresh)[0][:10000]
-    print(unconf_sample_indices.shape)
-    #todo is empty
-    unconf_train_embs = train_embs[unconf_sample_indices]
-
-    # distances to other unlabeled samples
-    # not normalized
-    p_bb = np.dot(unconf_train_embs, np.transpose(unconf_train_embs))
-    p_bb_or = p_bb.copy()
-    # ignore faraway samples
-    print('p', np.percentile(p_bb, 90))
-    p_bb[p_bb < np.percentile(p_bb, 90)] = 0
-    p_bb[p_bb > 1] = 1
-
-    # add up the 'inconfidence' of all close samples
-    region_conf = np.dot(p_bb, conf_thresh - sample_conf[unconf_sample_indices])
-
-    # indices = np.argpartition(region_conf, kth=n_samples)[:n_samples]
-    indices = np.argsort(-region_conf)[:n_samples]  # sort descending
-    or_indices = unconf_sample_indices[indices]
-
-    if vis:
-      for i in or_indices:
-          p_bb_ind = np.where(unconf_sample_indices == i)[0]
-          show_sample_img(train_images[i])
-          print('existing samples in training set from same class')
-          inds = np.where(sup_lbls == train_labels[i])[0]
-          imgs = sup_imgs[inds]
-          show_sample_img_inline(imgs)
-
-          print(preds[i, :])
-          print(p_ba[i, :])
-          print('close, also unconfident samples')
-          uinds = np.argsort(-p_bb_or[p_bb_ind,:])[0,:10]
-          orinds = unconf_sample_indices[uinds]
-          show_sample_img_inline(train_images[orinds])
-
-    return or_indices
-
-  def propose_samples_pb(self, sup_imgs, sup_lbls, train_images, train_labels, sess, n_samples=1, vis=False):
-    sup_embs = self.calc_embedding(sup_imgs, self.test_emb, sess)
-    train_embs = self.calc_embedding(train_images, self.test_emb, sess)
-
-    match_ab = np.dot(sup_embs, np.transpose(train_embs))
-    p_ba = softmax(np.transpose(match_ab))
-
-    preds = np.dot(p_ba, one_hot(np.asarray(sup_lbls, np.int64), depth=self.num_labels))
-
-    p_ab = softmax(match_ab)
-    sample_conf = np.mean(p_ab, axis=0)   # p_b
-
-    conf_thresh = np.percentile(sample_conf, 15)
-    m_conf_thresh = np.percentile(sample_conf, 1)
-
-    print('confidence thresholds', conf_thresh, m_conf_thresh)
-    unconf_sample_indices = np.where((m_conf_thresh < sample_conf) & (sample_conf < conf_thresh))[0][:10000]
-    unconf_train_embs = train_embs[unconf_sample_indices]
-
-    print(np.bincount(train_labels[unconf_sample_indices]))
-
-    row_sums = np.square(unconf_train_embs).sum(axis=1)
-    unconf_train_embs = unconf_train_embs / np.sqrt(row_sums[:, np.newaxis])
-
-    # distances to other unlabeled samples
-    # not normalized
-    p_bb = np.dot(unconf_train_embs, np.transpose(unconf_train_embs))
-
-    p_bb1 = p_bb.copy()
-    p_bb1[p_bb1 < np.percentile(p_bb1, 20)] = 0
-
-    # low score on normalized p_bb1 -> many close neighbours
-    p_bb1 = softmax(p_bb1)
-    close_neighbour_score = np.diag(p_bb1)  # lower is better
-
-    th2 = np.percentile(close_neighbour_score, 10)
-    sm = np.where(close_neighbour_score < th2)[0]
-
-    # --> we should not choose lowest sample conf
-    print(train_labels[np.argsort(sample_conf[unconf_sample_indices[sm]])[:20]])
-
-    print(np.bincount(train_labels[unconf_sample_indices[sm]]))
-    # indices = np.argpartition(region_conf, kth=n_samples)[:n_samples]
-    indices = np.argsort(close_neighbour_score)[:n_samples]  # sort descending
-    or_indices = unconf_sample_indices[indices]
-
-    if vis:
-      for count, i in enumerate(or_indices):
-        index = indices[count]
-        p_bb_ind = np.where(unconf_sample_indices == i)[0]
-        show_sample_img(train_images[i])
-        print('existing samples in training set from same class')
-        inds = np.where(sup_lbls == train_labels[i])
-        show_sample_img_inline(sup_imgs[inds])
-
-        print('confidence', preds[i, :], np.var(preds[i, :]), sample_conf[i], 'score', close_neighbour_score[index])
-
-        print('close, also unconfident samples')
-        uinds = np.argsort(-p_bb[p_bb_ind, :])[0, :10]
-        orinds = unconf_sample_indices[uinds]
-        show_sample_img_inline(train_images[orinds])
-
-    return or_indices
-
-  def propose_samples_pb_sampling(self, sup_imgs, sup_lbls, train_images, train_labels, sess, n_samples=1, vis=False):
-    sup_embs = self.calc_embedding(sup_imgs, self.test_emb, sess)
-    train_embs = self.calc_embedding(train_images, self.test_emb, sess)
-
-    match_ab = np.dot(sup_embs, np.transpose(train_embs))
-    p_ba = softmax(np.transpose(match_ab))
-
-    preds = np.dot(p_ba, one_hot(np.asarray(sup_lbls, np.int64), depth=self.num_labels))
-
-    p_ab = softmax(match_ab)
-    sample_conf = np.mean(p_ab, axis=0)   # p_b
-
-    conf_thresh = np.percentile(sample_conf, 15)
-    m_conf_thresh = np.percentile(sample_conf, 1)
-
-    print('confidence thresholds', conf_thresh, m_conf_thresh)
-    unconf_sample_indices = np.where((m_conf_thresh < sample_conf) & (sample_conf < conf_thresh))[0][:10000]
-    unconf_train_embs = train_embs[unconf_sample_indices]
-
-    print('class distribution for not confident samples', np.bincount(train_labels[unconf_sample_indices]))
-
-    row_sums = np.square(unconf_train_embs).sum(axis=1)
-    unconf_train_embs = unconf_train_embs / np.sqrt(row_sums[:, np.newaxis])
-
-    # distances to other unlabeled samples
-    # not normalized
-    p_bb = np.dot(unconf_train_embs, np.transpose(unconf_train_embs))
-
-    p_bb1 = p_bb.copy()
-    p_bb1[p_bb1 < np.percentile(p_bb1, 20)] = 0
-
-    # low score on normalized p_bb1 -> many close neighbours
-    p_bb1 = softmax(p_bb1)
-    close_neighbour_score = np.diag(p_bb1)  # lower is better
-
-    th2 = np.percentile(close_neighbour_score, 10)
-    sm = np.where(close_neighbour_score < th2)[0]
-
-    print('class distribution for not confident and "clustered" samples', np.bincount(train_labels[unconf_sample_indices[sm]]))
-
-    or_indices = unconf_sample_indices[sm[np.random.choice(len(sm), n_samples, replace=False)]]
-
-    if vis:
-      for count, i in enumerate(or_indices):
-        p_bb_ind = np.where(unconf_sample_indices == i)[0]
-        show_sample_img(train_images[i])
-        print('existing samples in training set from same class')
-        inds = np.where(sup_lbls == train_labels[i])
-        show_sample_img_inline(sup_imgs[inds])
-
-        print('confidence', preds[i, :], np.var(preds[i, :]), sample_conf[i])
-
-        print('close, also unconfident samples')
-        uinds = np.argsort(-p_bb[p_bb_ind, :])[0, :10]
-        orinds = unconf_sample_indices[uinds]
-        show_sample_img_inline(train_images[orinds])
-
-    return or_indices
-
-  def propose_samples_random(self, sup_imgs, sup_lbls, train_images, train_labels, sess, n_samples=1, vis=False):
-    rng = np.random.RandomState()
-    indices = rng.choice(len(train_images), n_samples, False)
-
-    if vis:
-      for i in indices:
-          show_sample_img(train_images[i])
-          print('existing samples in training set from same class')
-          inds = np.where(sup_lbls == train_labels[i])
-          show_sample_img_inline(sup_imgs[inds])
-    return indices
-
-
-  def propose_samples_min_var_logit(self, sup_imgs, sup_lbls, train_images, train_labels, sess, n_samples=1, vis=False):
-    embs = self.calc_embedding(train_images, self.test_logit, sess)
-
-    var = np.var(embs, axis = 1)
-    indices = np.argpartition(var, kth=n_samples)[:n_samples]
-    if vis:
-      for i in indices:
-          show_sample_img(train_images[i])
-          print('existing samples in training set from same class')
-          inds = np.where(sup_lbls == train_labels[i])
-          show_sample_img_inline(sup_imgs[inds])
-
-    print('indices', indices, var[indices])
-    return indices
-
-
-  def propose_samples_random_classes(self, sup_imgs, sup_lbls, train_images, train_labels, sess, n_samples=1, vis=False):
-    """
-    propose samples randomly, but ensure that the class distribution stays equal
-    this then approaches training with more samples
-    in the context of active learning should be considered 'cheating', as we use the class label info
-     of all training samples to pick a sample
-    """
-    label_count = np.bincount(np.asarray(sup_lbls, np.int64), minlength=self.num_labels)
-
-    target_per_class = 4
-    p = np.ones(self.num_labels) * target_per_class - label_count
-    p = p / np.sum(p)
-
-    print('p',p)
-    rng = np.random.RandomState()
-    classes = rng.choice(self.num_labels, n_samples, False, p)
-
-    indices = []
-    for i in classes:
-      inds_from_class = np.where(train_labels == i)[0]
-      print(rng.choice(inds_from_class, 1, False))
-      indices = indices + [rng.choice(inds_from_class, 1, False)[0]]
-
-    if vis:
-      for i in indices:
-          show_sample_img(train_images[i])
-          print('existing samples in training set from same class')
-          inds = np.where(sup_lbls == train_labels[i])
-          show_sample_img_inline(sup_imgs[inds])
-    return indices
-
   def calc_opt_logit_score(self, preds, lbls, k=None):
     # for the correct cluster score, we have to match clusters to classes
     # to do this, we can use the test labels to get the optimal matching
@@ -976,10 +582,9 @@ def calc_correct_logit_score(preds, lbls, num_labels):
   conf_mtx = confusion_matrix(lbls, preds, num_labels)
 
   assi = linear_sum_assignment(-conf_mtx)
-  i = np.argsort(assi[1])
 
   acc = conf_mtx[assi].sum() / conf_mtx.sum()
 
-  return conf_mtx[:,i], acc
+  return conf_mtx[:,assi[1]], acc
 
 from sklearn.cluster import KMeans
