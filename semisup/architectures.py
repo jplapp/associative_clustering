@@ -83,10 +83,13 @@ def resnet_cifar_model(inputs,
     from official.resnet import resnet_model
 
     def _find_tensor(name, graph=tf.get_default_graph()):
+        # graph is redefined multipletimes, use the last operation
+        # this might break if operations are re-ordered for some reason
+        a = None
         for op in graph.get_operations():
             if name in op.name:
-                return op.outputs[0]
-        return None
+                a = op.outputs[0]
+        return a
 
     inputs = tf.cast(inputs, tf.float32)
     if new_shape is not None:
@@ -104,10 +107,54 @@ def resnet_cifar_model(inputs,
     net = inputs
     network = resnet_model.cifar10_resnet_v2_generator(resnet_size, 1)
     logits = network(net, is_training)
-    pre_emb = _find_tensor('final_avg_pool')
+    pre_emb = _find_tensor('final_avg_pool', logits.graph)
     emb = tf.contrib.slim.flatten(pre_emb)
     emb = tf.layers.dense(inputs=emb, units=emb_size)
-    emb = tf.identity(emb, 'embeddings')
+    emb = tf.identity(emb, 'embeddings') 
+
+    return emb
+
+
+def stl10_ex_cnn(inputs,
+                 is_training=True,
+                 augmentation_function=None,
+                 emb_size=1024,
+                 img_shape=None,
+                 new_shape=None,
+                 dropout_keep_prob=None,
+                 image_summary=False,
+                 batch_norm_decay=0.99):
+    """Construct the image-to-embedding model."""
+    inputs = tf.cast(inputs, tf.float32)
+
+    net = inputs
+
+    with slim.arg_scope([slim.dropout], is_training=is_training):
+        with slim.arg_scope(
+            [slim.conv2d, slim.fully_connected],
+            activation_fn=tf.nn.relu,
+            weights_regularizer=slim.l2_regularizer(5e-3), ):  # todo check l2
+            with slim.arg_scope([slim.conv2d], padding='SAME'):
+                # 96
+                net = slim.conv2d(net, 92, [5, 5], padding=2, scope='conv1')  #
+                net = slim.max_pool2d(net, [3, 3], stride=2, scope='pool1')  #
+                print(net.shape)
+
+                net = slim.conv2d(net, 256, [5, 5], padding=2, scope='conv2')  #
+                net = slim.max_pool2d(net, [3, 3], stride=2, scope='pool2')  #
+                print(net.shape)
+
+                net = slim.conv2d(net, 512, [5, 5], padding=2, scope='conv3')  #
+                net = slim.max_pool2d(net, [3, 3], stride=2, scope='pool3')  #
+                print(net.shape)
+
+                net = slim.flatten(net, scope='flatten')
+                print(net.shape)
+
+                with slim.arg_scope([slim.fully_connected], normalizer_fn=None):
+                    emb = slim.fully_connected(
+                        net, emb_size, activation_fn=None, scope='fc1')
+                    # net = slim.dropout(net, dropout_keep_prob,  scope='dropout3')
 
     return emb
 
