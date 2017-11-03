@@ -135,25 +135,29 @@ def stl10_ex_cnn(inputs,
             activation_fn=tf.nn.relu,
             weights_regularizer=slim.l2_regularizer(5e-3), ):  # todo check l2
             with slim.arg_scope([slim.conv2d], padding='SAME'):
-                # 96
-                net = slim.conv2d(net, 92, [5, 5], padding=2, scope='conv1')  #
+                # 64
+                print('start', net.shape)
+                net = slim.conv2d(net, 92, [5, 5], padding='SAME', scope='conv1')  #
                 net = slim.max_pool2d(net, [3, 3], stride=2, scope='pool1')  #
                 print(net.shape)
 
-                net = slim.conv2d(net, 256, [5, 5], padding=2, scope='conv2')  #
+                net = slim.conv2d(net, 256, [5, 5], padding='SAME', scope='conv2')  #
                 net = slim.max_pool2d(net, [3, 3], stride=2, scope='pool2')  #
                 print(net.shape)
 
-                net = slim.conv2d(net, 512, [5, 5], padding=2, scope='conv3')  #
-                net = slim.max_pool2d(net, [3, 3], stride=2, scope='pool3')  #
+                net = slim.conv2d(net, 512, [5, 5], padding='SAME', scope='conv3')  #
+                #net = slim.max_pool2d(net, [3, 3], stride=2, scope='pool3')  #
                 print(net.shape)
 
+                #net = slim.conv2d(net, 1024, [8, 8], padding='VALID', scope='conv4')  #
+                #print(net.shape)
                 net = slim.flatten(net, scope='flatten')
-                print(net.shape)
+                print('fl',net.shape)
+                pre_emb = slim.fully_connected(net, 1024, scope='fc0')
 
                 with slim.arg_scope([slim.fully_connected], normalizer_fn=None):
-                    emb = slim.fully_connected(
-                        net, emb_size, activation_fn=None, scope='fc1')
+                  emb = slim.fully_connected(
+                    pre_emb, emb_size, activation_fn=None, scope='fc1')
                     # net = slim.dropout(net, dropout_keep_prob,  scope='dropout3')
 
     return emb
