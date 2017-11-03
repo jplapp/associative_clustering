@@ -26,6 +26,7 @@ from scipy.optimize import linear_sum_assignment
 
 from sklearn.cluster import KMeans
 from sklearn import svm
+from sklearn.metrics.cluster import normalized_mutual_info_score
 
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
@@ -642,3 +643,7 @@ def calc_correct_logit_score(preds, lbls, num_labels):
     acc = conf_mtx[assi].sum() / conf_mtx.sum()
 
     return conf_mtx[:, assi[1]], acc
+
+def calc_nmi(preds, lbls):
+    nmi = normalized_mutual_info_score(preds, lbls)
+    return nmi

@@ -274,12 +274,14 @@ def main(_):
 
       if step == 0 or (step + 1) % FLAGS.eval_interval == 0 or step == 99:
         print('Step: %d' % step)
-        print('entropy', entropy_)
         test_pred = model.classify(c_test_imgs, sess).argmax(-1)
+
+        nmi = semisup.calc_nmi(test_pred, test_labels)
 
         conf_mtx, score = semisup.calc_correct_logit_score(test_pred, test_labels, num_labels)
         print(conf_mtx)
         print('Test error: %.2f %%' % (100 - score * 100))
+        print('Test NMI: %.2f %%' % (nmi * 100))
         print('Train loss: %.2f ' % train_loss)
         print('Reg loss aba: %.2f ' % reg_loss)
         print('Estimated Accuracy: %.2f ' % estimated_error)
