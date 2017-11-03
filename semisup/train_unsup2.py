@@ -36,6 +36,7 @@ flags.DEFINE_integer('eval_interval', 1000,
 flags.DEFINE_float('learning_rate', 2e-4, 'Initial learning rate.')
 
 flags.DEFINE_integer('warmup_steps', 1000, 'Warmup steps.')
+flags.DEFINE_integer('reg_warmup_steps', 1, 'Warmup steps for regularization walker.')
 flags.DEFINE_integer('num_unlabeled_images', 0, 'How many images to use from the unlabeled set.')
 
 flags.DEFINE_float('visit_weight_base', 0.5, 'Weight for visit loss.')
@@ -64,6 +65,7 @@ flags.DEFINE_string('init_method', 'normal_center03',
                     'How to initialize image centroids. Should be one  of [uniform_128, uniform_10, uniform_255, avg, random_center]')
 flags.DEFINE_float('dropout_keep_prob', 0.8, 'Keep Prop in dropout. Set to 1 to deactivate dropout')
 
+flags.DEFINE_string('logdir', None, 'Where to put the logs. By default, no logs will be saved.')
 flags.DEFINE_string('dataset', 'mnist', 'Which dataset to work on.')
 flags.DEFINE_string('architecture', 'mnist_model_dropout', 'Which network architecture '
                     'from architectures.py to use.')
@@ -83,22 +85,20 @@ from tensorflow.contrib.data import Dataset
 from augment import apply_augmentation
 
 
-dataset_tools = import_module('tools.' + FLAGS.dataset)
-
-NUM_LABELS = dataset_tools.NUM_LABELS
-num_labels = NUM_LABELS
-IMAGE_SHAPE = dataset_tools.IMAGE_SHAPE
-image_shape = IMAGE_SHAPE
-
 def main(_):
-  train_images, _ = dataset_tools.get_data('train')  # no train labels nowhere
+  dataset_tools = import_module('tools.' + FLAGS.dataset)
+
+  NUM_LABELS = dataset_tools.NUM_LABELS
+  num_labels = NUM_LABELS
+  IMAGE_SHAPE = dataset_tools.IMAGE_SHAPE
+  image_shape = IMAGE_SHAPE
+
+  train_images, train_labels_svm = dataset_tools.get_data('train')  # no train labels nowhere
   test_images, test_labels = dataset_tools.get_data('test')
 
   if FLAGS.num_unlabeled_images > 0:
     unlabeled_train_images, _ = dataset_tools.get_data('unlabeled', max_num=FLAGS.num_unlabeled_images)
-    train_images = np.vstack([train_images, unlabeled_train_images, test_images])
-  else:
-    train_images = np.vstack([train_images, test_images])
+    train_images = np.vstack([train_images, unlabeled_train_images])
 
   if FLAGS.normalize_input:
     train_images = (train_images - 128.) / 128.
@@ -135,6 +135,7 @@ def main(_):
     b = 500
 
     rf = FLAGS.num_augmented_samples
+
     augmented_set = dataset
     if FLAGS.shuffle_augmented_samples:
       augmented_set = augmented_set.shuffle(buffer_size=5000, seed=47)
@@ -145,8 +146,8 @@ def main(_):
     augmented_set = augmented_set.map(aug, num_threads=nt, output_buffer_size=b)
 
     dataset = dataset.map(random_crop, num_threads=nt, output_buffer_size=b)
-    dataset = dataset.batch(FLAGS.unsup_batch_size).repeat()
-    augmented_set = augmented_set.batch(FLAGS.unsup_batch_size * rf).repeat()
+    dataset = dataset.repeat().batch(FLAGS.unsup_batch_size)
+    augmented_set = augmented_set.repeat().batch(FLAGS.unsup_batch_size * rf)
 
     iterator = dataset.make_initializable_iterator()
     reg_iterator = augmented_set.make_initializable_iterator()
@@ -219,6 +220,10 @@ def main(_):
 
     train_op = model.create_train_op(t_learning_rate)
 
+    summary_op = tf.summary.merge_all()
+    if FLAGS.logdir is not None:
+      summary_writer = tf.summary.FileWriter(FLAGS.logdir, graph)
+      saver = tf.train.Saver()
 
   with tf.Session(graph=graph) as sess:
     tf.global_variables_initializer().run()
@@ -240,12 +245,12 @@ def main(_):
 
     from numpy.linalg import norm
 
-    reg_warmup_steps = 2
+    reg_warmup_steps = FLAGS.reg_warmup_steps
 
     for step in range(FLAGS.max_steps):
 
-      _, train_loss, centroids, unsup_emb, reg_unsup_emb, estimated_error, p_ab, p_ba, p_aba, reg_loss = sess.run(
-        [train_op, model.train_loss, t_sup_emb, t_unsup_emb, t_reg_unsup_emb, model.estimate_error, model.p_ab,
+      _, train_loss, summaries, centroids, unsup_emb, reg_unsup_emb, estimated_error, p_ab, p_ba, p_aba, reg_loss = sess.run(
+        [train_op, model.train_loss, summary_op, t_sup_emb, t_unsup_emb, t_reg_unsup_emb, model.estimate_error, model.p_ab,
          model.p_ba, model.p_aba, model.reg_loss_aba], {
           rwalker_weight: FLAGS.rwalker_weight,
           rvisit_weight: FLAGS.rvisit_weight,
@@ -254,7 +259,8 @@ def main(_):
           t_l1_weight: FLAGS.l1_weight,
           t_norm_weight: FLAGS.norm_weight,
           t_logit_weight: FLAGS.logit_weight,
-          t_learning_rate: 1e-6 + apply_envelope("log", step, FLAGS.learning_rate, FLAGS.warmup_steps, 0)
+          t_learning_rate: 1e-6 + apply_envelope("log", step, FLAGS.learning_rate, FLAGS.warmup_steps, 0),
+          #model.test_in: c_test_imgs[0:96]
         })
 
       if step == 0 or (step + 1) % FLAGS.eval_interval == 0 or step == 99:
@@ -279,6 +285,27 @@ def main(_):
         print(k_conf_mtx)
         print('k means score:', k_score)  # sometimes that kmeans is better than the logits
 
+        if FLAGS.logdir is not None:
+          sum_values = {
+            'test score': score,
+            'reg loss': reg_loss,
+            'centroid norm': np.mean(c_n),
+            'embedding norm': np.mean(c_n),
+            'k means score': k_score
+          }
+
+          summary_writer.add_summary(summaries, step)
+
+          for key, value in sum_values:
+            summary = tf.Summary(
+              value=[tf.Summary.Value(tag=key, simple_value=value)])
+            summary_writer.add_summary(summary, step)
+
+          saver.save(sess, FLAGS.logdir, model.step)
+
+
+    svm_test_score, _ = model.train_and_eval_svm(train_images, train_labels_svm, c_test_imgs, test_labels, sess, num_samples=10000)
+
     print('FINAL RESULTS:')
     print(conf_mtx)
     print('Test error: %.2f %%' % (100 - score * 100))
@@ -288,10 +315,10 @@ def main(_):
     print('@@train_loss:%.4f' % train_loss)
     print('@@reg_loss:%.4f' % reg_loss)
     print('@@estimated_error:%.4f' % estimated_error)
-    print('@@centroid_norm:%.4f' % c_n)
-    print('@@emb_norm:%.4f' % e_n)
+    print('@@centroid_norm:%.4f' % np.mean(c_n))
+    print('@@emb_norm:%.4f' % np.mean(e_n))
     print('@@k_score:%.4f' % k_score)
-    print('@@svm_score:%.4f' % 0)
+    print('@@svm_score:%.4f' % svm_test_score)
     
 
 
