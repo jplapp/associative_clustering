@@ -386,8 +386,13 @@ class SemisupModel(object):
           Minimize KL distance between logits and logits^2
 
         """
+        #kl_dist = tf.contrib.distributions.kl(logits**2, logits)
+        # logits_squared / logits = logits
+        eps = 0.00001
+        logits = tf.clip_by_value(logits, eps, 1 - eps)
 
-        kl_dist = tf.contrib.distributions.kl(logits**2, logits)
+        logits_squared = logits ** 2
+        kl_dist = tf.reduce_mean(tf.reduce_sum(logits_squared * tf.log(logits), 1))
 
         tf.add_to_collection(LOSSES_COLLECTION, - kl_dist * weight)
 
