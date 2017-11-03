@@ -89,4 +89,4 @@ augmentation_params['max_crop_percentage'] = 0.2
 augmentation_params['brightness_max_delta'] = 0.5
 augmentation_params['noise_std'] = 0.05
 augmentation_params['flip'] = False
-augmentation_params['max_rotate_angle'] = 0
+augmentation_params['max_rotate_angle'] = 10

@@ -10,6 +10,9 @@ Runs on mnist, cifar10, svhn, stl10 and potentially more datasets
 
 usage:
    python3 train_unsup2.py [args]
+
+e.g. 99% on MNIST in 10000 steps:
+ python3 train_unsup2.py  --l1_weight 0 --warmup_steps 2000 --reg_warmup_steps 1000 --visit_weight_base 1 --learning_rate 0.001 --init_with_kmeans
 """
 
 from __future__ import absolute_import
@@ -36,6 +39,9 @@ flags.DEFINE_integer('eval_interval', 1000,
 flags.DEFINE_float('learning_rate', 2e-4, 'Initial learning rate.')
 
 flags.DEFINE_integer('warmup_steps', 1000, 'Warmup steps.')
+flags.DEFINE_float('decay_factor', 0.33, 'Learning rate decay factor.')
+flags.DEFINE_float('decay_steps', 5000,  'Learning rate decay interval in steps.')
+
 flags.DEFINE_integer('reg_warmup_steps', 1, 'Warmup steps for regularization walker.')
 flags.DEFINE_integer('num_unlabeled_images', 0, 'How many images to use from the unlabeled set.')
 
@@ -76,6 +82,7 @@ flags.DEFINE_string('architecture', 'mnist_model_dropout', 'Which network archit
                     'from architectures.py to use.')
 
 flags.DEFINE_string('restore_checkpoint', None, 'restore weights from checkpoint, e.g. some autoencoder pretraining')
+flags.DEFINE_bool('init_with_kmeans', False, 'Initialize centroids using kmeans after reg_warmup_steps steps.')
 flags.DEFINE_bool('normalize_embeddings', False, 'Normalize embeddings (l2 norm = 1)')
 flags.DEFINE_bool('shuffle_augmented_samples', False, 'If true, the augmented samples are shuffled separately. Otherwise, a batch contains augmentated samples of its non-augmented samples')
 
@@ -255,24 +262,58 @@ def main(_):
     from numpy.linalg import norm
 
     reg_warmup_steps = FLAGS.reg_warmup_steps
+    rwalker_weight_ = FLAGS.rwalker_weight
+    rvisit_weight_ = FLAGS.rvisit_weight
+    learning_rate_ = FLAGS.learning_rate
 
     for step in range(FLAGS.max_steps):
+      if FLAGS.init_with_kmeans:
+        if step < reg_warmup_steps:
+          walker_weight_ = 0
+          visit_weight_ = 0
+        else:
+          walker_weight_ = FLAGS.walker_weight
+          visit_weight_ = FLAGS.visit_weight_base
+      else:
+        walker_weight_ = apply_envelope("log", step, FLAGS.walker_weight, reg_warmup_steps, 0)
+        visit_weight_ = apply_envelope("log", step, FLAGS.visit_weight_base, reg_warmup_steps, 0)
 
       _, train_loss, summaries, centroids, unsup_emb, reg_unsup_emb, estimated_error, p_ab, p_ba, p_aba, reg_loss, entropy_ = sess.run(
         [train_op, model.train_loss, summary_op, t_sup_emb, t_unsup_emb, t_reg_unsup_emb, model.estimate_error, model.p_ab,
          model.p_ba, model.p_aba, model.reg_loss_aba, entropy], {
-          rwalker_weight: FLAGS.rwalker_weight,
-          rvisit_weight: FLAGS.rvisit_weight,
-          walker_weight: apply_envelope("log", step, FLAGS.walker_weight, reg_warmup_steps, 0),
-          visit_weight: apply_envelope("log", step, FLAGS.visit_weight_base, reg_warmup_steps, 0),
+          rwalker_weight: rwalker_weight_,
+          rvisit_weight: rvisit_weight_,
+          walker_weight: walker_weight_,
+          visit_weight: visit_weight_,
           t_l1_weight: FLAGS.l1_weight,
           t_norm_weight: FLAGS.norm_weight,
           t_logit_weight: FLAGS.logit_weight,
-          t_learning_rate: 1e-6 + apply_envelope("log", step, FLAGS.learning_rate, FLAGS.warmup_steps, 0),
-          #model.test_in: c_test_imgs[0:96]
+          t_learning_rate: 1e-6 + apply_envelope("log", step, learning_rate_, FLAGS.warmup_steps, 0)
         })
-      #if step % 100 == 0:
-      #  print('c_0', centroids[0, :20])
+
+      if FLAGS.init_with_kmeans and step == reg_warmup_steps:
+        # do kmeans, initialize with kmeans
+        embs = model.calc_embedding(c_test_imgs, model.test_emb, sess)
+
+        kmeans = semisup.KMeans(n_clusters=num_labels, random_state=0).fit(embs)
+
+        init_virt = []
+        noise = 0.0001
+        for c in range(num_labels):
+          center = kmeans.cluster_centers_[c]
+          noise = np.random.uniform(-noise, noise, size=[FLAGS.virtual_embeddings_per_class, FLAGS.emb_size])
+          centroids = noise + center
+          init_virt.extend(centroids)
+
+        # init with K-Means
+        assign_op = t_sup_emb.assign(np.array(init_virt))
+        sess.run(assign_op)
+
+        rwalker_weight_ = 0.2
+        rvisit_weight_ = 0.2
+
+      if step % FLAGS.decay_steps == 0 and step > 0:
+        learning_rate_ = learning_rate_ * FLAGS.decay_factor
 
       if step == 0 or (step + 1) % FLAGS.eval_interval == 0 or step == 99:
         print('Step: %d' % step)
