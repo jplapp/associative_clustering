@@ -46,6 +46,7 @@ flags.DEFINE_float('visit_weight_add', 0, 'Additional weight for visit loss afte
 flags.DEFINE_float('centroid_momentum', 0, 'Centroid momentum to stabilarize centroids.')
 
 flags.DEFINE_float('logit_entropy_weight', 0, 'Weight for 2) logit entropy.')
+flags.DEFINE_float('cluster_hardening_weight', 0, 'Weight for 1) cluster hardening using logits.')
 
 flags.DEFINE_float('beta1', 0.8, 'beta1 parameter for adam')
 flags.DEFINE_float('beta2', 0.9, 'beta2 parameter for adam')
@@ -216,6 +217,7 @@ def main(_):
     model.add_logit_loss(t_sup_logit, t_sup_labels, weight=t_logit_weight)
 
     entropy = model.add_logit_entropy(t_sup_logit, weight=FLAGS.logit_entropy_weight)
+    kl_dist = model.add_cluster_hardening_loss(t_sup_logit, weight=FLAGS.cluster_hardening_weight)
 
     model.add_emb_regularization(t_all_unsup_emb, weight=t_l1_weight)
     model.add_emb_regularization(t_sup_emb, weight=t_l1_weight)

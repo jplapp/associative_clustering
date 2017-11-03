@@ -380,6 +380,21 @@ class SemisupModel(object):
 
         return entropy
 
+    def add_cluster_hardening_loss(self, logits, weight=1.0, name=''):
+        """
+          (1): Cluster hardening loss:
+          Minimize KL distance between logits and logits^2
+
+        """
+
+        kl_dist = tf.contrib.distributions.kl(logits**2, logits)
+
+        tf.add_to_collection(LOSSES_COLLECTION, - kl_dist * weight)
+
+        tf.summary.scalar('cluster_hardening_kl_dist' + name, kl_dist)
+
+        return kl_dist
+
     def add_semisup_loss_with_logits(self, a, b, logits, walker_weight=1.0,
                                      visit_weight=1.0, stop_gradient=False):
         """Add semi-supervised classification loss to the model.
