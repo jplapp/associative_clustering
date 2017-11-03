@@ -43,6 +43,8 @@ flags.DEFINE_float('visit_weight_base', 0.5, 'Weight for visit loss.')
 flags.DEFINE_float('rvisit_weight', 1, 'Weight for reg visit loss.')
 flags.DEFINE_float('visit_weight_add', 0, 'Additional weight for visit loss after warmup.')
 
+flags.DEFINE_float('logit_entropy_weight', 0, 'Weight for 2) logit entropy.')
+
 flags.DEFINE_float('beta1', 0.8, 'beta1 parameter for adam')
 flags.DEFINE_float('beta2', 0.9, 'beta2 parameter for adam')
 
@@ -211,6 +213,8 @@ def main(_):
 
     model.add_logit_loss(t_sup_logit, t_sup_labels, weight=t_logit_weight)
 
+    entropy = model.add_logit_entropy(t_sup_logit, weight=FLAGS.logit_entropy_weight)
+
     model.add_emb_regularization(t_all_unsup_emb, weight=t_l1_weight)
     model.add_emb_regularization(t_sup_emb, weight=t_l1_weight)
 
@@ -249,9 +253,9 @@ def main(_):
 
     for step in range(FLAGS.max_steps):
 
-      _, train_loss, summaries, centroids, unsup_emb, reg_unsup_emb, estimated_error, p_ab, p_ba, p_aba, reg_loss = sess.run(
+      _, train_loss, summaries, centroids, unsup_emb, reg_unsup_emb, estimated_error, p_ab, p_ba, p_aba, reg_loss, entropy_ = sess.run(
         [train_op, model.train_loss, summary_op, t_sup_emb, t_unsup_emb, t_reg_unsup_emb, model.estimate_error, model.p_ab,
-         model.p_ba, model.p_aba, model.reg_loss_aba], {
+         model.p_ba, model.p_aba, model.reg_loss_aba, entropy], {
           rwalker_weight: FLAGS.rwalker_weight,
           rvisit_weight: FLAGS.rvisit_weight,
           walker_weight: apply_envelope("log", step, FLAGS.walker_weight, reg_warmup_steps, 0),
@@ -265,6 +269,7 @@ def main(_):
 
       if step == 0 or (step + 1) % FLAGS.eval_interval == 0 or step == 99:
         print('Step: %d' % step)
+        print('entropy', entropy_)
         test_pred = model.classify(c_test_imgs, sess).argmax(-1)
 
         conf_mtx, score = semisup.calc_correct_logit_score(test_pred, test_labels, num_labels)

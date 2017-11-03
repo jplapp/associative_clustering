@@ -339,6 +339,23 @@ class SemisupModel(object):
 
     return loss_aba
 
+
+  def add_logit_entropy(self, logits, weight=1.0, name=''):
+    """
+      (2): Logit entropy loss
+
+      more clipping might be necessary
+
+    """
+    eps = 0.00001
+    logits = tf.clip_by_value(logits, eps, 1-eps)
+    entropy = tf.reduce_mean(-tf.reduce_sum(logits * tf.log(logits), reduction_indices=[1]))
+    tf.add_to_collection(LOSSES_COLLECTION, - entropy * weight)
+
+    tf.summary.scalar('logit_entropy'+name, entropy)
+
+    return entropy
+
   def add_semisup_loss_with_logits(self, a, b, logits, walker_weight=1.0, visit_weight=1.0, stop_gradient=False):
     """Add semi-supervised classification loss to the model.
 
