@@ -488,7 +488,7 @@ class SemisupModel(object):
         l2n = tf.norm(embs, axis=1)
         l1_loss((l2n - target) ** 2, weight)
 
-    def create_train_op(self, learning_rate):
+    def create_train_op(self, learning_rate, gradient_multipliers=None):
         """Create and return training operation."""
 
         slim.model_analyzer.analyze_vars(
@@ -519,7 +519,8 @@ class SemisupModel(object):
 
         self.train_op = slim.learning.create_train_op(self.train_loss,
                                                       self.trainer,
-                                                      summarize_gradients=False)
+                                                      summarize_gradients=False,
+                                                      gradient_multipliers=gradient_multipliers)
         return self.train_op
 
     def calc_embedding(self, images, endpoint, sess):
