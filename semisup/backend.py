@@ -22,10 +22,13 @@ from __future__ import print_function
 
 import numpy as np
 
+from scipy.optimize import linear_sum_assignment
+
+from sklearn.cluster import KMeans
+from sklearn import svm
+
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
-from scipy.optimize import linear_sum_assignment
-from sklearn import svm
 
 
 def show_sample_img(img):
@@ -639,6 +642,3 @@ def calc_correct_logit_score(preds, lbls, num_labels):
     acc = conf_mtx[assi].sum() / conf_mtx.sum()
 
     return conf_mtx[:, assi[1]], acc
-
-
-from sklearn.cluster import KMeans
