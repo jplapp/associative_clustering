@@ -43,6 +43,8 @@ flags.DEFINE_float('visit_weight_base', 0.5, 'Weight for visit loss.')
 flags.DEFINE_float('rvisit_weight', 1, 'Weight for reg visit loss.')
 flags.DEFINE_float('visit_weight_add', 0, 'Additional weight for visit loss after warmup.')
 
+flags.DEFINE_float('centroid_momentum', 0, 'Centroid momentum to stabilarize centroids.')
+
 flags.DEFINE_float('logit_entropy_weight', 0, 'Weight for 2) logit entropy.')
 
 flags.DEFINE_float('beta1', 0.8, 'beta1 parameter for adam')
@@ -222,7 +224,8 @@ def main(_):
     model.add_emb_normalization(t_sup_emb, weight=t_norm_weight * 5, target=3)
     model.add_emb_normalization(t_all_unsup_emb, weight=t_norm_weight, target=3)
 
-    train_op = model.create_train_op(t_learning_rate)
+    gradient_multipliers = { t_sup_emb: 1-FLAGS.centroid_momentum }
+    train_op = model.create_train_op(t_learning_rate, gradient_multipliers=gradient_multipliers)
 
     summary_op = tf.summary.merge_all()
     if FLAGS.logdir is not None:
@@ -266,6 +269,8 @@ def main(_):
           t_learning_rate: 1e-6 + apply_envelope("log", step, FLAGS.learning_rate, FLAGS.warmup_steps, 0),
           #model.test_in: c_test_imgs[0:96]
         })
+      #if step % 100 == 0:
+      #  print('c_0', centroids[0, :20])
 
       if step == 0 or (step + 1) % FLAGS.eval_interval == 0 or step == 99:
         print('Step: %d' % step)
