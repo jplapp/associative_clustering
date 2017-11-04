@@ -663,7 +663,7 @@ class SemisupModel(object):
         return test_accuracy, train_accuracy
 
     def add_transformation_loss(self, t_embs, t_aug_embs, t_embs_logits,
-                                t_aug_embs_logits, weight=1, label_smoothing=0):
+                                t_aug_embs_logits, batch_size, weight=1, label_smoothing=0):
         """ Add a transformation loss.
         Args:
             t_embs: embeddings of input images
@@ -673,25 +673,25 @@ class SemisupModel(object):
         Returns:
             Transformation loss.
         """
-
         t_all_embs = tf.concat([t_embs, t_aug_embs], axis=0)
-        batch_size = 400 #  this is None: t_all_embs.get_shape().as_list()[0]
 
         t_all_logits = tf.concat([t_embs_logits, t_aug_embs_logits], axis=0)
         t_all_logits_softmaxed = tf.nn.softmax(t_all_logits)
 
+        batch_size *= 2  # due to concatenation
         t_emb_sim = tf.matmul(t_all_embs, t_all_embs, transpose_b=True,
                               name='emb_similarity')
         t_emb_sim = tf.reshape(t_emb_sim, [batch_size ** 2])
 
+        # TODO(haeusser) use xentropy without softmax
         t_xentropy = tf.losses.softmax_cross_entropy(
-            tf_repeat(t_all_logits_softmaxed, [batch_size]),
-            tf.tile(t_all_logits, batch_size),  # will be softmaxed
+            tf_repeat(t_all_logits_softmaxed, [batch_size, 1]),  # "labels"
+            tf.tile(t_all_logits, [batch_size, 1]),  # will be softmaxed
             label_smoothing=label_smoothing,
-            loss_collection=None,
+            loss_collection=None,  # this is not the final loss yet
         )
 
-        t_target = tf.ones([batch_size ** 2]) - t_xentropy
+        t_target = tf.ones([batch_size ** 2], dtype=tf.float64) - t_xentropy
 
         self.t_transf_loss = tf.reduce_mean(tf.abs(t_target - t_emb_sim)) * weight
         tf.add_to_collection(LOSSES_COLLECTION, self.t_transf_loss)
