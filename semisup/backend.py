@@ -254,8 +254,8 @@ def tf_repeat(tensor, repeats):
         expanded_tensor = tf.expand_dims(tensor, -1)
         multiples = [1] + repeats
         tiled_tensor = tf.tile(expanded_tensor, multiples=multiples)
-        repeated_tesnor = tf.reshape(tiled_tensor, tf.shape(tensor) * repeats)
-    return repeated_tesnor
+        repeated_tensor = tf.reshape(tiled_tensor, tf.shape(tensor) * repeats)
+    return repeated_tensor
 
 
 class SemisupModel(object):
@@ -663,7 +663,7 @@ class SemisupModel(object):
         return test_accuracy, train_accuracy
 
     def add_transformation_loss(self, t_embs, t_aug_embs, t_embs_logits,
-                                t_aug_embs_logits, label_smoothing=0):
+                                t_aug_embs_logits, weight=1, label_smoothing=0):
         """ Add a transformation loss.
         Args:
             t_embs: embeddings of input images
@@ -674,10 +674,10 @@ class SemisupModel(object):
             Transformation loss.
         """
 
-        t_all_embs = tf.concat([t_embs, t_aug_embs], 0)
-        batch_size = t_all_embs.get_shape().as_list()[0]
+        t_all_embs = tf.concat([t_embs, t_aug_embs], axis=0)
+        batch_size = 400 #  this is None: t_all_embs.get_shape().as_list()[0]
 
-        t_all_logits = tf.concat([t_embs_logits, t_aug_embs_logits], 0)
+        t_all_logits = tf.concat([t_embs_logits, t_aug_embs_logits], axis=0)
         t_all_logits_softmaxed = tf.nn.softmax(t_all_logits)
 
         t_emb_sim = tf.matmul(t_all_embs, t_all_embs, transpose_b=True,
@@ -685,7 +685,7 @@ class SemisupModel(object):
         t_emb_sim = tf.reshape(t_emb_sim, [batch_size ** 2])
 
         t_xentropy = tf.losses.softmax_cross_entropy(
-            tf_repeat(t_all_logits_softmaxed, batch_size),
+            tf_repeat(t_all_logits_softmaxed, [batch_size]),
             tf.tile(t_all_logits, batch_size),  # will be softmaxed
             label_smoothing=label_smoothing,
             loss_collection=None,
@@ -693,10 +693,8 @@ class SemisupModel(object):
 
         t_target = tf.ones([batch_size ** 2]) - t_xentropy
 
-        self.t_transf_loss = tf.abs(t_target - t_emb_sim)
-        tf.losses.add_loss(self.t_transf_loss,
-                           loss_collection=tf.GraphKeys.LOSSES
-                           )
+        self.t_transf_loss = tf.reduce_mean(tf.abs(t_target - t_emb_sim)) * weight
+        tf.add_to_collection(LOSSES_COLLECTION, self.t_transf_loss)
 
         tf.summary.scalar('Loss_transf', self.t_transf_loss)
 
