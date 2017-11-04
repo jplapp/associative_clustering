@@ -237,6 +237,27 @@ def l1_loss(tensor, weight, scope=None):
     return loss
 
 
+def tf_repeat(tensor, repeats):
+    """
+    Args:
+
+    input: A Tensor. 1-D or higher.
+    repeats: A list. Number of repeat for each dimension, length must be the
+    same as the number of dimensions in input
+
+    Returns:
+
+    A Tensor. Has the same type as input. Has the shape of tensor.shape *
+    repeats
+    """
+    with tf.variable_scope("repeat"):
+        expanded_tensor = tf.expand_dims(tensor, -1)
+        multiples = [1] + repeats
+        tiled_tensor = tf.tile(expanded_tensor, multiples=multiples)
+        repeated_tesnor = tf.reshape(tiled_tensor, tf.shape(tensor) * repeats)
+    return repeated_tesnor
+
+
 class SemisupModel(object):
     """Helper class for setting up semi-supervised training."""
 
@@ -386,13 +407,14 @@ class SemisupModel(object):
           Minimize KL distance between logits and logits^2
 
         """
-        #kl_dist = tf.contrib.distributions.kl(logits**2, logits)
+        # kl_dist = tf.contrib.distributions.kl(logits**2, logits)
         # logits_squared / logits = logits
         eps = 0.00001
         logits = tf.clip_by_value(logits, eps, 1 - eps)
 
         logits_squared = logits ** 2
-        kl_dist = tf.reduce_mean(tf.reduce_sum(logits_squared * tf.log(logits), 1))
+        kl_dist = tf.reduce_mean(
+            tf.reduce_sum(logits_squared * tf.log(logits), 1))
 
         tf.add_to_collection(LOSSES_COLLECTION, - kl_dist * weight)
 
@@ -640,6 +662,46 @@ class SemisupModel(object):
 
         return test_accuracy, train_accuracy
 
+    def add_transformation_loss(self, t_embs, t_aug_embs, t_embs_logits,
+                                t_aug_embs_logits, label_smoothing=0):
+        """ Add a transformation loss.
+        Args:
+            t_embs: embeddings of input images
+            t_aug_embs: embeddings of augmented input images
+            t_embs_logits: logits of input images (pre-softmax!)
+            t_aug_embs_logits: logits of augmented input images (pre-softmax!)
+        Returns:
+            Transformation loss.
+        """
+
+        t_all_embs = tf.concat([t_embs, t_aug_embs], 0)
+        batch_size = t_all_embs.get_shape().as_list()[0]
+
+        t_all_logits = tf.concat([t_embs_logits, t_aug_embs_logits], 0)
+        t_all_logits_softmaxed = tf.nn.softmax(t_all_logits)
+
+        t_emb_sim = tf.matmul(t_all_embs, t_all_embs, transpose_b=True,
+                              name='emb_similarity')
+        t_emb_sim = tf.reshape(t_emb_sim, [batch_size ** 2])
+
+        t_xentropy = tf.losses.softmax_cross_entropy(
+            tf_repeat(t_all_logits_softmaxed, batch_size),
+            tf.tile(t_all_logits, batch_size),  # will be softmaxed
+            label_smoothing=label_smoothing,
+            loss_collection=None,
+        )
+
+        t_target = tf.ones([batch_size ** 2]) - t_xentropy
+
+        self.t_transf_loss = tf.abs(t_target - t_emb_sim)
+        tf.losses.add_loss(self.t_transf_loss,
+                           loss_collection=tf.GraphKeys.LOSSES
+                           )
+
+        tf.summary.scalar('Loss_transf', self.t_transf_loss)
+
+        return self.t_transf_loss
+
 
 def do_kmeans(embs, lbls, num_labels):
     kmeans = KMeans(n_clusters=num_labels, random_state=0).fit(embs)
@@ -663,6 +725,7 @@ def calc_correct_logit_score(preds, lbls, num_labels):
     acc = conf_mtx[assi].sum() / conf_mtx.sum()
 
     return conf_mtx[:, assi[1]], acc
+
 
 def calc_nmi(preds, lbls):
     nmi = normalized_mutual_info_score(preds, lbls)
