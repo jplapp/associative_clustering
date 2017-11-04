@@ -281,7 +281,7 @@ class SemisupModel(object):
         """
 
         self.num_labels = num_labels
-        self.step = slim.get_or_create_global_step()
+        self.step = tf.train.get_or_create_global_step()
         self.ema = tf.train.ExponentialMovingAverage(0.99, self.step)
         self.emb_size = emb_size
 
@@ -696,7 +696,7 @@ class SemisupModel(object):
         self.t_transf_loss = tf.reduce_mean(tf.abs(t_target - t_emb_sim)) * weight
         tf.add_to_collection(LOSSES_COLLECTION, self.t_transf_loss)
 
-        tf.summary.scalar('Loss_transf', self.t_transf_loss)
+        tf.summary.scalar('Loss_Transf', self.t_transf_loss)
 
         return self.t_transf_loss
 
