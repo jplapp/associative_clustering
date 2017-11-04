@@ -9,7 +9,7 @@ def rotate(x, degrees):
     rows, cols = x.shape[:2]
     rot_m = cv2.getRotationMatrix2D((cols / 2, rows / 2), degrees, 1)
     res= cv2.warpAffine(x, rot_m, (cols, rows))
-    res = np.reshape(res, res.shape+(x.shape[2],))
+    res = np.reshape(res, res.shape[:2]+(x.shape[2],))
     return res
 
   return tf.py_func(_rotate, [x, degrees], [tf.float32], name='rotate')

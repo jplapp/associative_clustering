@@ -13,6 +13,9 @@ usage:
 
 e.g. 99% on MNIST in 10000 steps:
  python3 train_unsup2.py  --l1_weight 0 --warmup_steps 2000 --reg_warmup_steps 1000 --visit_weight_base 1 --learning_rate 0.001 --init_with_kmeans
+
+ or 49% on FRGC:
+  python3 train_unsup2.py  --l1_weight 0 --warmup_steps 3000 --reg_warmup_steps 2000 --visit_weight_base 0.1 --learning_rate 0.001 --init_with_kmeans --dataset frgc
 """
 
 from __future__ import absolute_import
@@ -90,6 +93,7 @@ flags.DEFINE_bool('shuffle_augmented_samples', False, 'If true, the augmented sa
 print(FLAGS.learning_rate, FLAGS.__flags) # print all flags (useful when logging)
 
 import numpy as np
+np.core.arrayprint._line_width = 150
 from semisup.backend import apply_envelope
 from backend import apply_envelope
 import semisup
