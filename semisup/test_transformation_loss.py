@@ -3,10 +3,12 @@ import numpy as np
 import tensorflow as tf
 
 with tf.Graph().as_default():
-  batch_size = 100
-  t_embs = tf.Variable(np.random.uniform(-1, 1, (batch_size, 128)))
+  batch_size = 10
+  emb_size = 128
+  np_embeddings = np.identity(emb_size)[:batch_size] + np.random.uniform(-.2, .2, (batch_size, emb_size))
+  t_embs = tf.Variable(np_embeddings)
   t_aug_embs_good = t_embs
-  t_aug_embs_bad = tf.Variable(np.random.uniform(-1, 1, (batch_size, 128)))
+  t_aug_embs_bad = tf.Variable(np.random.uniform(-.2, .2, (batch_size, emb_size)))
   t_embs_logits = tf.slice(t_embs, (0, 0), (batch_size, 10))
   t_aug_embs_logits = t_embs_logits
 
@@ -22,6 +24,8 @@ with tf.Graph().as_default():
 
   with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
-    [np_loss_good, np_loss_bad] = sess.run([t_loss_good, t_loss_bad])
+    [np_loss_good, np_loss_bad, np_embs] = sess.run([t_loss_good, t_loss_bad, t_embs])
     print('good loss', np_loss_good)
-    print('good bad', np_loss_bad)
+    print('bad loss', np_loss_bad)
+    # print('embs', np_embs)
+    assert np_loss_good < np_loss_bad
