@@ -391,11 +391,12 @@ class SemisupModel(object):
           more clipping might be necessary
 
         """
-        eps = 0.00001
+        eps = 1e-8
         logits = tf.clip_by_value(logits, eps, 1 - eps)
         entropy = tf.reduce_mean(
             -tf.reduce_sum(logits * tf.log(logits), reduction_indices=[1]))
-        tf.add_to_collection(LOSSES_COLLECTION, - entropy * weight)
+        entropy *= weight
+        tf.add_to_collection(LOSSES_COLLECTION, entropy)
 
         tf.summary.scalar('logit_entropy' + name, entropy)
 
@@ -409,18 +410,20 @@ class SemisupModel(object):
         """
         # kl_dist = tf.contrib.distributions.kl(logits**2, logits)
         # logits_squared / logits = logits
-        eps = 0.00001
+        eps = 1e-8
         logits = tf.clip_by_value(logits, eps, 1 - eps)
 
         logits_squared = logits ** 2
-        kl_dist = tf.reduce_mean(
+        kl_div = tf.reduce_mean(
             tf.reduce_sum(logits_squared * tf.log(logits), 1))
 
-        tf.add_to_collection(LOSSES_COLLECTION, - kl_dist * weight)
+        kl_div *= weight
 
-        tf.summary.scalar('cluster_hardening_kl_dist' + name, kl_dist)
+        tf.add_to_collection(LOSSES_COLLECTION, kl_div)
 
-        return kl_dist
+        tf.summary.scalar('cluster_hardening_kl_dist' + name, kl_div)
+
+        return kl_div
 
     def add_semisup_loss_with_logits(self, a, b, logits, walker_weight=1.0,
                                      visit_weight=1.0, stop_gradient=False):
@@ -678,7 +681,7 @@ class SemisupModel(object):
         t_all_logits = tf.concat([t_embs_logits, t_aug_embs_logits], axis=0)
         t_all_logits_softmaxed = tf.nn.softmax(t_all_logits)
 
-        batch_size *= 2  # due to concatenation
+        batch_size *= 2  # due to concatenation if batch_size is the same for embs and aug_embs
         t_emb_sim = tf.matmul(t_all_embs, t_all_embs, transpose_b=True,
                               name='emb_similarity')
         t_emb_sim = tf.reshape(t_emb_sim, [batch_size ** 2])
