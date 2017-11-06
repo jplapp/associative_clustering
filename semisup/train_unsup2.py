@@ -228,7 +228,7 @@ def main(_):
     model.add_logit_loss(t_sup_logit, t_sup_labels, weight=t_logit_weight)
 
     entropy = model.add_logit_entropy(t_sup_logit, weight=FLAGS.logit_entropy_weight)
-    kl_dist = model.add_cluster_hardening_loss(t_sup_logit, weight=FLAGS.cluster_hardening_weight)
+    kl_div = model.add_cluster_hardening_loss(t_sup_logit, weight=FLAGS.cluster_hardening_weight)
 
     model.add_emb_regularization(t_all_unsup_emb, weight=t_l1_weight)
     model.add_emb_regularization(t_sup_emb, weight=t_l1_weight)
