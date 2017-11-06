@@ -2,11 +2,11 @@ from __future__ import division
 from __future__ import print_function
 
 import pickle
+
 import numpy as np
 from tools import data_dirs
 
 DATADIR = data_dirs.mnistm
-
 
 NUM_LABELS = 10
 IMAGE_SHAPE = [28, 28, 3]
@@ -37,4 +37,3 @@ def load_mnistm(fileroot, partition):
                          'Use "train" or "test".')
 
     return images, labels
-

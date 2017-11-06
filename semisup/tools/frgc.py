@@ -11,31 +11,30 @@ from tools import data_dirs
 
 DATADIR = data_dirs.frgc
 
-
 NUM_LABELS = 20
 IMAGE_SHAPE = [32, 32, 3]
 
 
 def get_data(name):
-  import h5py
-  filename = '/data4torch.h5'
-  f = h5py.File(DATADIR + filename, 'r')
+    import h5py
+    filename = '/data4torch.h5'
+    f = h5py.File(DATADIR + filename, 'r')
 
-  # List all groups
-  print("Keys: %s" % f.keys())
-  data_group_key = list(f.keys())[0]
-  label_group_key = list(f.keys())[1]
+    # List all groups
+    print("Keys: %s" % f.keys())
+    data_group_key = list(f.keys())[0]
+    label_group_key = list(f.keys())[1]
 
-  # Get the data
-  data = np.array(list(f[data_group_key]))
-  data = np.swapaxes(data, 1, 3)  # we need channels_last
-  labels = np.array(list(f[label_group_key]), np.int)
-  unique = list(np.unique(labels))
-  l_from_zero = np.array([unique.index(l) for l in np.array(labels, np.int)])
+    # Get the data
+    data = np.array(list(f[data_group_key]))
+    data = np.swapaxes(data, 1, 3)  # we need channels_last
+    labels = np.array(list(f[label_group_key]), np.int)
+    unique = list(np.unique(labels))
+    l_from_zero = np.array([unique.index(l) for l in np.array(labels, np.int)])
 
-  print(data.shape)
+    print(data.shape)
 
-  return data, l_from_zero
+    return data, l_from_zero
 
 
 # Dataset specific augmentation parameters.
@@ -50,4 +49,3 @@ augmentation_params['hue_max_delta'] = 0.2
 augmentation_params['noise_std'] = 0.05
 augmentation_params['flip'] = True
 augmentation_params['max_rotate_angle'] = 10
-

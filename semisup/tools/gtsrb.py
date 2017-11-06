@@ -5,8 +5,8 @@ import csv
 import pickle
 
 import matplotlib.pyplot as plt
-from PIL import Image
 import numpy as np
+from PIL import Image
 
 import data_dirs
 
@@ -65,9 +65,9 @@ def load_and_append_image_class(prefix, gtFile, images, labels, roi_boxes):
     # loop over all images in current annotations file
     for row in gtReader:
         images.append(
-            plt.imread(prefix + row[0]))  # the 1st column is the filename
+                plt.imread(prefix + row[0]))  # the 1st column is the filename
         roi_boxes.append(
-            (float(row[3]), float(row[4]), float(row[5]), float(row[6])))
+                (float(row[3]), float(row[4]), float(row[5]), float(row[6])))
         labels.append(row[7])  # the 8th column is the label
     gtFile.close()
 
@@ -91,7 +91,7 @@ def preprocess_and_convert_gtsrb_to_pickle(rootpath, pickle_filename,
         for c in range(0, NUM_LABELS):
             prefix = rootpath + '/' + format(c, '05d') + '/'  # subdir for class
             gtFile = open(
-                prefix + 'GT-' + format(c, '05d') + '.csv')  # annotations file
+                    prefix + 'GT-' + format(c, '05d') + '.csv')  # annotations file
             load_and_append_image_class(prefix, gtFile, images, labels,
                                         roi_boxes)
     elif type == 'test':
@@ -100,7 +100,7 @@ def preprocess_and_convert_gtsrb_to_pickle(rootpath, pickle_filename,
         load_and_append_image_class(prefix, gtFile, images, labels, roi_boxes)
     else:
         raise ValueError(
-            'The data partition type you have provided is not valid.')
+                'The data partition type you have provided is not valid.')
 
     images = np.asarray(images)
     labels = np.asarray(labels)

@@ -16,11 +16,13 @@
 #
 ########################################################################
 
-import sys
 import os
-import urllib.request
+import sys
 import tarfile
 import zipfile
+
+import urllib.request
+
 
 ########################################################################
 
@@ -93,6 +95,5 @@ def maybe_download_and_extract(url, download_dir):
         print("Done.")
     else:
         print("Data has apparently already been downloaded and unpacked.")
-
 
 ########################################################################

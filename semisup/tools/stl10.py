@@ -24,8 +24,8 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.platform import gfile
+from tensorflow.python.platform import tf_logging as logging
 from tools import data_dirs
 
 DATADIR = data_dirs.stl10
@@ -34,80 +34,80 @@ IMAGE_SHAPE = [96, 96, 3]
 
 
 def get_data(name, max_num=20000):
-  """Utility for convenient data loading.
+    """Utility for convenient data loading.
 
-  Args:
-    name: Name of the split. Can be 'test', 'train' or 'unlabeled'.
-    max_num: maximum number of unlabeled samples.
-  Returns:
-    A tuple containing (images, labels) where lables=None for the unlabeled
-    split.
-  """
-  if name == 'train':
-    return extract_images(DATADIR + 'train_X.bin',
-                          IMAGE_SHAPE), extract_labels(DATADIR + 'train_y.bin')
-  elif name == 'test':
-    return extract_images(DATADIR + 'test_X.bin',
-                          IMAGE_SHAPE), extract_labels(DATADIR + 'test_y.bin')
+    Args:
+      name: Name of the split. Can be 'test', 'train' or 'unlabeled'.
+      max_num: maximum number of unlabeled samples.
+    Returns:
+      A tuple containing (images, labels) where lables=None for the unlabeled
+      split.
+    """
+    if name == 'train':
+        return extract_images(DATADIR + 'train_X.bin',
+                              IMAGE_SHAPE), extract_labels(DATADIR + 'train_y.bin')
+    elif name == 'test':
+        return extract_images(DATADIR + 'test_X.bin',
+                              IMAGE_SHAPE), extract_labels(DATADIR + 'test_y.bin')
 
-  elif name == 'unlabeled':
-    res = extract_images(DATADIR + 'unlabeled_X.bin', IMAGE_SHAPE)
-    num_images = len(res)
-    if num_images > max_num:
-      rng = np.random.RandomState()
-      return res[rng.choice(len(res), max_num, False)], None
-    else:
-      return res, None
+    elif name == 'unlabeled':
+        res = extract_images(DATADIR + 'unlabeled_X.bin', IMAGE_SHAPE)
+        num_images = len(res)
+        if num_images > max_num:
+            rng = np.random.RandomState()
+            return res[rng.choice(len(res), max_num, False)], None
+        else:
+            return res, None
 
 
 def extract_images(filename, shape):
-  """Extract the images into a 4D uint8 numpy array [index, y, x, depth]."""
-  logging.info('Extracting %s', filename)
-  with gfile.Open(filename, 'rb') as f:
-    imgs = np.fromstring(f.read(), np.uint8)
-  imgs = imgs.reshape(-1, *shape[::-1])
-  imgs = np.transpose(imgs, [0, 3, 2, 1])
-  return imgs
+    """Extract the images into a 4D uint8 numpy array [index, y, x, depth]."""
+    logging.info('Extracting %s', filename)
+    with gfile.Open(filename, 'rb') as f:
+        imgs = np.fromstring(f.read(), np.uint8)
+    imgs = imgs.reshape(-1, *shape[::-1])
+    imgs = np.transpose(imgs, [0, 3, 2, 1])
+    return imgs
 
 
 def extract_labels(filename):
-  """Extract the labels into a 1D uint8 numpy array [index]."""
-  logging.info('Extracting %s', filename)
-  with gfile.Open(filename, 'rb') as f:
-    lbls = np.fromstring(f.read(), np.uint8)
-  lbls -= 1  # STL-10 labels are not zero-indexed
-  return lbls
+    """Extract the labels into a 1D uint8 numpy array [index]."""
+    logging.info('Extracting %s', filename)
+    with gfile.Open(filename, 'rb') as f:
+        lbls = np.fromstring(f.read(), np.uint8)
+    lbls -= 1  # STL-10 labels are not zero-indexed
+    return lbls
 
 
 def pick_fold(images, labels, fold=-1):
-  """Choose subset of labeled training data.
+    """Choose subset of labeled training data.
 
-     According to the training protocol suggested by the creators of the dataset
-     https://cs.stanford.edu/~acoates/stl10/
+       According to the training protocol suggested by the creators of the dataset
+       https://cs.stanford.edu/~acoates/stl10/
 
-  Args:
-    images: A 4D numpy array containing the images.
-    labels: A 1D numpy array containing the corresponding labels.
-    fold: The fold index in [0, 9]. Default: -1 = use all data.
-  Returns:
-    A tuple (images, lables)
-  """
-  assert -1 <= fold <= 9, 'Fold index needs to be in [0, 9] or -1 for all data.'
-  if fold > -1:
-    logging.info('Selecting fold %d', fold)
-    fold_indices = []
-    with gfile.Open(
-        'path_to_stl10_binary/fold_indices.txt',
-        'r') as f:
-      for line in f.iteritems():
-        fold_indices.append((line.split(' ')[:-1]))
-    fold_indices = np.array(fold_indices).astype(np.uint16)
+    Args:
+      images: A 4D numpy array containing the images.
+      labels: A 1D numpy array containing the corresponding labels.
+      fold: The fold index in [0, 9]. Default: -1 = use all data.
+    Returns:
+      A tuple (images, lables)
+    """
+    assert -1 <= fold <= 9, 'Fold index needs to be in [0, 9] or -1 for all data.'
+    if fold > -1:
+        logging.info('Selecting fold %d', fold)
+        fold_indices = []
+        with gfile.Open(
+                'path_to_stl10_binary/fold_indices.txt',
+                'r') as f:
+            for line in f.iteritems():
+                fold_indices.append((line.split(' ')[:-1]))
+        fold_indices = np.array(fold_indices).astype(np.uint16)
 
-    images = images[fold_indices[fold]]
-    labels = labels[fold_indices[fold]]
-  else:
-    logging.info('Using all folds.')
-  return images, labels
+        images = images[fold_indices[fold]]
+        labels = labels[fold_indices[fold]]
+    else:
+        logging.info('Using all folds.')
+    return images, labels
 
 
 # Dataset specific augmentation parameters.

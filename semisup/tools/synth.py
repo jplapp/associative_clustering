@@ -22,8 +22,10 @@ They are used in svhn_train.py and svhn_eval.py.
 """
 from __future__ import division
 from __future__ import print_function
+
 import numpy as np
 import scipy.io
+
 import data_dirs
 
 DATADIR = data_dirs.synth
@@ -32,33 +34,33 @@ IMAGE_SHAPE = [32, 32, 3]
 
 
 def get_data(name, num=70000):
-  """Get a split from the synth dataset.
+    """Get a split from the synth dataset.
 
-  Args:
-   name: 'train' or 'test'
-   num: How many samples to read (randomly) from the data set
+    Args:
+     name: 'train' or 'test'
+     num: How many samples to read (randomly) from the data set
 
-  Returns:
-   images, labels
-  """
+    Returns:
+     images, labels
+    """
 
-  if name == 'train' or name == 'unlabeled':
-    fn = 'synth_train_32x32.mat'
-  elif name == 'test':
-    fn = 'synth_test_32x32.mat'
+    if name == 'train' or name == 'unlabeled':
+        fn = 'synth_train_32x32.mat'
+    elif name == 'test':
+        fn = 'synth_test_32x32.mat'
 
-  data = scipy.io.loadmat(DATADIR + fn)
+    data = scipy.io.loadmat(DATADIR + fn)
 
-  images = np.rollaxis(data['X'], -1)
-  labels = data['y'].ravel() % 10
+    images = np.rollaxis(data['X'], -1)
+    labels = data['y'].ravel() % 10
 
-  num_samples = len(images)
-  indices = np.random.choice(num_samples, min(num, num_samples), False)
+    num_samples = len(images)
+    indices = np.random.choice(num_samples, min(num, num_samples), False)
 
-  images = images[indices]
-  labels = labels[indices]
+    images = images[indices]
+    labels = labels[indices]
 
-  if name == 'unlabeled':
-    return images, None
-  else:
-    return images, labels
+    if name == 'unlabeled':
+        return images, None
+    else:
+        return images, labels

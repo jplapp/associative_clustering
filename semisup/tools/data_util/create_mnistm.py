@@ -1,5 +1,6 @@
-import tarfile
 import cPickle as pkl
+import tarfile
+
 import numpy as np
 import skimage.transform
 from tensorflow.examples.tutorials.mnist import input_data

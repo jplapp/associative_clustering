@@ -95,9 +95,9 @@ def resnet_cifar_model(inputs,
     if new_shape is not None:
         shape = new_shape
         inputs = tf.image.resize_images(
-            inputs,
-            tf.constant(new_shape[:2]),
-            method=tf.image.ResizeMethod.BILINEAR)
+                inputs,
+                tf.constant(new_shape[:2]),
+                method=tf.image.ResizeMethod.BILINEAR)
     else:
         shape = img_shape
     if is_training and augmentation_function is not None:
@@ -110,7 +110,7 @@ def resnet_cifar_model(inputs,
     pre_emb = _find_tensor('final_avg_pool', logits.graph)
     emb = tf.contrib.slim.flatten(pre_emb)
     emb = tf.layers.dense(inputs=emb, units=emb_size)
-    emb = tf.identity(emb, 'embeddings') 
+    emb = tf.identity(emb, 'embeddings')
 
     return emb
 
@@ -131,9 +131,9 @@ def stl10_ex_cnn(inputs,
 
     with slim.arg_scope([slim.dropout], is_training=is_training):
         with slim.arg_scope(
-            [slim.conv2d, slim.fully_connected],
-            activation_fn=tf.nn.relu,
-            weights_regularizer=slim.l2_regularizer(5e-3), ):  # todo check l2
+                [slim.conv2d, slim.fully_connected],
+                activation_fn=tf.nn.relu,
+                weights_regularizer=slim.l2_regularizer(5e-3), ):  # todo check l2
             with slim.arg_scope([slim.conv2d], padding='SAME'):
                 # 64
                 print('start', net.shape)
@@ -146,18 +146,18 @@ def stl10_ex_cnn(inputs,
                 print(net.shape)
 
                 net = slim.conv2d(net, 512, [5, 5], padding='SAME', scope='conv3')  #
-                #net = slim.max_pool2d(net, [3, 3], stride=2, scope='pool3')  #
+                # net = slim.max_pool2d(net, [3, 3], stride=2, scope='pool3')  #
                 print(net.shape)
 
-                #net = slim.conv2d(net, 1024, [8, 8], padding='VALID', scope='conv4')  #
-                #print(net.shape)
+                # net = slim.conv2d(net, 1024, [8, 8], padding='VALID', scope='conv4')  #
+                # print(net.shape)
                 net = slim.flatten(net, scope='flatten')
-                print('fl',net.shape)
+                print('fl', net.shape)
                 pre_emb = slim.fully_connected(net, 1024, scope='fc0')
 
                 with slim.arg_scope([slim.fully_connected], normalizer_fn=None):
-                  emb = slim.fully_connected(
-                    pre_emb, emb_size, activation_fn=None, scope='fc1')
+                    emb = slim.fully_connected(
+                            pre_emb, emb_size, activation_fn=None, scope='fc1')
                     # net = slim.dropout(net, dropout_keep_prob,  scope='dropout3')
 
     return emb
@@ -178,9 +178,9 @@ def svhn_model(inputs,
     if new_shape is not None:
         shape = new_shape
         inputs = tf.image.resize_images(
-            inputs,
-            tf.constant(new_shape[:2]),
-            method=tf.image.ResizeMethod.BILINEAR)
+                inputs,
+                tf.constant(new_shape[:2]),
+                method=tf.image.ResizeMethod.BILINEAR)
     else:
         shape = img_shape
     if is_training and augmentation_function is not None:
@@ -275,9 +275,9 @@ def dann_model(inputs,
     if new_shape is not None:
         shape = new_shape
         inputs = tf.image.resize_images(
-            inputs,
-            tf.constant(new_shape[:2]),
-            method=tf.image.ResizeMethod.BILINEAR)
+                inputs,
+                tf.constant(new_shape[:2]),
+                method=tf.image.ResizeMethod.BILINEAR)
     else:
         shape = img_shape
     if is_training and augmentation_function is not None:
@@ -329,9 +329,9 @@ def stl10_model(inputs,
     if new_shape is not None:
         shape = new_shape
         inputs = tf.image.resize_images(
-            inputs,
-            tf.constant(new_shape[:2]),
-            method=tf.image.ResizeMethod.BILINEAR)
+                inputs,
+                tf.constant(new_shape[:2]),
+                method=tf.image.ResizeMethod.BILINEAR)
     else:
         shape = img_shape
     if is_training and augmentation_function is not None:
@@ -347,7 +347,7 @@ def stl10_model(inputs,
                 normalizer_params={
                     'is_training': is_training,
                     'decay': batch_norm_decay
-                },
+                    },
                 activation_fn=tf.nn.elu,
                 weights_regularizer=slim.l2_regularizer(5e-3), ):
             with slim.arg_scope([slim.conv2d], padding='SAME'):
@@ -366,7 +366,7 @@ def stl10_model(inputs,
 
                     with slim.arg_scope([slim.fully_connected], normalizer_fn=None):
                         emb = slim.fully_connected(
-                            net, emb_size, activation_fn=None, scope='fc1')
+                                net, emb_size, activation_fn=None, scope='fc1')
     return emb
 
 
@@ -391,7 +391,7 @@ def stl10_model_direct(inputs,
                 normalizer_params={
                     'is_training': is_training,
                     'decay': batch_norm_decay
-                },
+                    },
                 activation_fn=tf.nn.elu,
                 weights_regularizer=slim.l2_regularizer(5e-3), ):
             with slim.arg_scope([slim.conv2d], padding='SAME'):
@@ -423,7 +423,7 @@ def stl10_model_direct(inputs,
 
                     with slim.arg_scope([slim.fully_connected], normalizer_fn=None):
                         emb = slim.fully_connected(
-                            net, emb_size, activation_fn=None, scope='fc1')
+                                net, emb_size, activation_fn=None, scope='fc1')
     return emb
 
 
@@ -444,9 +444,9 @@ def mnist_model(inputs,
     if new_shape is not None:
         shape = new_shape
         inputs = tf.image.resize_images(
-            inputs,
-            tf.constant(new_shape[:2]),
-            method=tf.image.ResizeMethod.BILINEAR)
+                inputs,
+                tf.constant(new_shape[:2]),
+                method=tf.image.ResizeMethod.BILINEAR)
     else:
         shape = img_shape
 
@@ -496,9 +496,9 @@ def mnist_model_dropout(inputs,
     if new_shape is not None:
         shape = new_shape
         inputs = tf.image.resize_images(
-            inputs,
-            tf.constant(new_shape[:2]),
-            method=tf.image.ResizeMethod.BILINEAR)
+                inputs,
+                tf.constant(new_shape[:2]),
+                method=tf.image.ResizeMethod.BILINEAR)
     else:
         shape = img_shape
     net = inputs
@@ -699,9 +699,9 @@ def mnist_model_dropout_normalized(inputs,
     if new_shape is not None:
         shape = new_shape
         inputs = tf.image.resize_images(
-            inputs,
-            tf.constant(new_shape[:2]),
-            method=tf.image.ResizeMethod.BILINEAR)
+                inputs,
+                tf.constant(new_shape[:2]),
+                method=tf.image.ResizeMethod.BILINEAR)
     else:
         shape = img_shape
     net = inputs
@@ -768,9 +768,9 @@ def inception_model(inputs,
     if new_shape is not None:
         shape = new_shape
         inputs = tf.image.resize_images(
-            inputs,
-            tf.constant(new_shape[:2]),
-            method=tf.image.ResizeMethod.BILINEAR)
+                inputs,
+                tf.constant(new_shape[:2]),
+                method=tf.image.ResizeMethod.BILINEAR)
     else:
         shape = img_shape
 
@@ -789,11 +789,11 @@ def inception_model(inputs,
         with arg_scope(
                 [layers_lib.batch_norm, layers_lib.dropout], is_training=is_training):
             _, end_points = inception_v3_base(
-                inputs,
-                scope=scope,
-                min_depth=min_depth,
-                depth_multiplier=depth_multiplier,
-                final_endpoint=end_point)
+                    inputs,
+                    scope=scope,
+                    min_depth=min_depth,
+                    depth_multiplier=depth_multiplier,
+                    final_endpoint=end_point)
 
     net = end_points[end_point]
     net = slim.flatten(net, scope='flatten')
@@ -817,9 +817,9 @@ def vgg16_model(inputs, emb_size=128, is_training=True, img_shape=None, new_shap
     if new_shape is not None:
         shape = new_shape
         inputs = tf.image.resize_images(
-            inputs,
-            tf.constant(new_shape[:2]),
-            method=tf.image.ResizeMethod.BILINEAR)
+                inputs,
+                tf.constant(new_shape[:2]),
+                method=tf.image.ResizeMethod.BILINEAR)
     else:
         shape = img_shape
 
@@ -901,9 +901,9 @@ def alexnet_model(inputs,
         if new_shape is not None:
             shape = new_shape
             inputs = tf.image.resize_images(
-                inputs,
-                tf.constant(new_shape[:2]),
-                method=tf.image.ResizeMethod.BILINEAR)
+                    inputs,
+                    tf.constant(new_shape[:2]),
+                    method=tf.image.ResizeMethod.BILINEAR)
         else:
             shape = img_shape
         if is_training and augmentation_function is not None:
@@ -925,7 +925,7 @@ def alexnet_model(inputs,
                     [layers.conv2d, layers_lib.fully_connected, layers_lib.max_pool2d],
                     outputs_collections=[end_points_collection]):
                 net = layers.conv2d(
-                    inputs, 64, [11, 11], 4, padding='VALID', scope='conv1')
+                        inputs, 64, [11, 11], 4, padding='VALID', scope='conv1')
                 net = layers_lib.max_pool2d(net, [3, 3], 2, scope='pool1')
                 net = layers.conv2d(net, 192, [5, 5], scope='conv2')
                 net = layers_lib.max_pool2d(net, [3, 3], 2, scope='pool2')
@@ -943,7 +943,7 @@ def alexnet_model(inputs,
                         biases_initializer=init_ops.constant_initializer(0.1)):
                     net = layers.fully_connected(net, 4096, scope='fc6')
                     net = layers_lib.dropout(
-                        net, dropout_keep_prob, is_training=is_training, scope='dropout6')
+                            net, dropout_keep_prob, is_training=is_training, scope='dropout6')
                     net = layers.fully_connected(net, emb_size, scope='fc7')
 
         return net

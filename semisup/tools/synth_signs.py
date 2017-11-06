@@ -1,10 +1,11 @@
 from __future__ import division
 from __future__ import print_function
 
+import csv
 import pickle
+
 import numpy as np
 from PIL import Image
-import csv
 
 import data_dirs
 

@@ -21,17 +21,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
 from functools import partial
 from importlib import import_module
 
 import numpy as np
-import semisup
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 from tensorflow.python.training import saver as tf_saver
+
+import semisup
 
 FLAGS = flags.FLAGS
 
@@ -46,7 +46,7 @@ flags.DEFINE_string('target_dataset_split', 'unlabeled',
                     'adaptation.')
 
 flags.DEFINE_string('architecture', 'svhn_model', 'Which network architecture '
-                    'from architectures.py to use.')
+                                                  'from architectures.py to use.')
 
 flags.DEFINE_integer('sup_per_class', 100,
                      'Number of labeled samples used per class in total.'
@@ -205,7 +205,7 @@ def main(argv):
     if FLAGS.target_dataset is not None:
         target_dataset_tools = import_module('tools.' + FLAGS.target_dataset)
         train_images_unlabeled, _ = target_dataset_tools.get_data(
-            FLAGS.target_dataset_split)
+                FLAGS.target_dataset_split)
     else:
         train_images_unlabeled, _ = dataset_tools.get_data('unlabeled')
 
@@ -230,7 +230,7 @@ def main(argv):
 
         rng = np.random.RandomState(seed=seed)
         train_images_unlabeled = train_images_unlabeled[rng.choice(
-            num_unlabeled, FLAGS.unsup_samples, False)]
+                num_unlabeled, FLAGS.unsup_samples, False)]
 
     graph = tf.Graph()
     with graph.as_default():
@@ -241,14 +241,14 @@ def main(argv):
             t_unsup_images = semisup.create_input(train_images_unlabeled, None,
                                                   FLAGS.unsup_batch_size)
             t_sup_images, t_sup_labels = semisup.create_per_class_inputs(
-                sup_by_label, FLAGS.sup_per_batch)
+                    sup_by_label, FLAGS.sup_per_batch)
 
             if FLAGS.remove_classes:
                 t_sup_images = tf.slice(
-                    t_sup_images, [0, 0, 0, 0],
-                    [FLAGS.sup_per_batch * (
-                        num_labels - FLAGS.remove_classes)] +
-                    image_shape)
+                        t_sup_images, [0, 0, 0, 0],
+                        [FLAGS.sup_per_batch * (
+                            num_labels - FLAGS.remove_classes)] +
+                        image_shape)
 
             # Resize if necessary.
             if FLAGS.new_size > 0:
@@ -261,9 +261,9 @@ def main(argv):
                 # TODO(haeusser) generalize augmentation
                 def _random_invert(inputs, _):
                     randu = tf.random_uniform(
-                        shape=[FLAGS.sup_per_batch * num_labels], minval=0.,
-                        maxval=1.,
-                        dtype=tf.float32)
+                            shape=[FLAGS.sup_per_batch * num_labels], minval=0.,
+                            maxval=1.,
+                            dtype=tf.float32)
                     randu = tf.cast(tf.less(randu, 0.5), tf.float32)
                     randu = tf.expand_dims(randu, 1)
                     randu = tf.expand_dims(randu, 1)
@@ -277,12 +277,12 @@ def main(argv):
 
             # Create function that defines the network.
             model_function = partial(
-                architecture,
-                new_shape=new_shape,
-                img_shape=image_shape,
-                augmentation_function=augmentation_function,
-                batch_norm_decay=FLAGS.batch_norm_decay,
-                emb_size=FLAGS.emb_size)
+                    architecture,
+                    new_shape=new_shape,
+                    img_shape=image_shape,
+                    augmentation_function=augmentation_function,
+                    batch_norm_decay=FLAGS.batch_norm_decay,
+                    emb_size=FLAGS.emb_size)
 
             # Set up semisup model.
             model = semisup.SemisupModel(model_function, num_labels,
@@ -297,7 +297,7 @@ def main(argv):
                 t_sup_emb = tf.concat(0, [
                     t_sup_emb, semisup.create_virt_emb(FLAGS.virtual_embeddings,
                                                        FLAGS.emb_size)
-                ])
+                    ])
 
                 if not FLAGS.remove_classes:
                     # need to add additional labels for virtual embeddings
@@ -306,7 +306,7 @@ def main(argv):
                         (num_labels + tf.range(1, FLAGS.virtual_embeddings + 1,
                                                tf.int64))
                         * tf.ones([FLAGS.virtual_embeddings], tf.int64)
-                    ])
+                        ])
 
             t_sup_logit = model.embedding_to_logit(t_sup_emb)
 
@@ -320,17 +320,17 @@ def main(argv):
                 if FLAGS.visit_weight_envelope_delay == -1
                 else FLAGS.visit_weight_envelope_delay)
             visit_weight = apply_envelope(
-                            type=FLAGS.visit_weight_envelope,
-                            step=model.step,
-                            final_weight=FLAGS.visit_weight,
-                            growing_steps=visit_weight_envelope_steps,
-                            delay=visit_weight_envelope_delay)
+                    type=FLAGS.visit_weight_envelope,
+                    step=model.step,
+                    final_weight=FLAGS.visit_weight,
+                    growing_steps=visit_weight_envelope_steps,
+                    delay=visit_weight_envelope_delay)
             walker_weight = apply_envelope(
-                                type=FLAGS.walker_weight_envelope,
-                                step=model.step,
-                                final_weight=FLAGS.walker_weight,
-                                growing_steps=FLAGS.walker_weight_envelope_steps,  # pylint:disable=line-too-long
-                                delay=FLAGS.walker_weight_envelope_delay)
+                    type=FLAGS.walker_weight_envelope,
+                    step=model.step,
+                    final_weight=FLAGS.walker_weight,
+                    growing_steps=FLAGS.walker_weight_envelope_steps,  # pylint:disable=line-too-long
+                    delay=FLAGS.walker_weight_envelope_delay)
             tf.summary.scalar('Weights_Visit', visit_weight)
             tf.summary.scalar('Weights_Walker', walker_weight)
 
@@ -347,13 +347,13 @@ def main(argv):
 
             # Set up learning rate
             t_learning_rate = tf.maximum(
-                tf.train.exponential_decay(
-                    FLAGS.learning_rate,
-                    model.step,
-                    FLAGS.decay_steps,
-                    FLAGS.decay_factor,
-                    staircase=True),
-                FLAGS.minimum_learning_rate)
+                    tf.train.exponential_decay(
+                            FLAGS.learning_rate,
+                            model.step,
+                            FLAGS.decay_steps,
+                            FLAGS.decay_factor,
+                            staircase=True),
+                    FLAGS.minimum_learning_rate)
 
             # Create training operation and start the actual training loop.
             train_op = model.create_train_op(t_learning_rate)
@@ -363,22 +363,23 @@ def main(argv):
             # config.log_device_placement = True
 
             saver = tf_saver.Saver(max_to_keep=FLAGS.max_checkpoints,
-                                   keep_checkpoint_every_n_hours=FLAGS.keep_checkpoint_every_n_hours)  # pylint:disable=line-too-long
+                                   keep_checkpoint_every_n_hours=FLAGS.keep_checkpoint_every_n_hours)  #
+            # pylint:disable=line-too-long
 
             slim.learning.train(
-                train_op,
-                logdir=FLAGS.logdir + '/train',
-                save_summaries_secs=FLAGS.save_summaries_secs,
-                save_interval_secs=FLAGS.save_interval_secs,
-                master=FLAGS.master,
-                is_chief=(FLAGS.task == 0),
-                startup_delay_steps=(FLAGS.task * 20),
-                log_every_n_steps=FLAGS.log_every_n_steps,
-                session_config=config,
-                trace_every_n_steps=1000,
-                saver=saver,
-                number_of_steps=FLAGS.max_steps,
-            )
+                    train_op,
+                    logdir=FLAGS.logdir + '/train',
+                    save_summaries_secs=FLAGS.save_summaries_secs,
+                    save_interval_secs=FLAGS.save_interval_secs,
+                    master=FLAGS.master,
+                    is_chief=(FLAGS.task == 0),
+                    startup_delay_steps=(FLAGS.task * 20),
+                    log_every_n_steps=FLAGS.log_every_n_steps,
+                    session_config=config,
+                    trace_every_n_steps=1000,
+                    saver=saver,
+                    number_of_steps=FLAGS.max_steps,
+                    )
 
 
 if __name__ == '__main__':

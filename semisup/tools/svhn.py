@@ -22,10 +22,10 @@ They are used in svhn_train.py and svhn_eval.py.
 """
 from __future__ import division
 from __future__ import print_function
+
 import numpy as np
 import scipy.io
 from tools import data_dirs
-
 
 DATADIR = data_dirs.svhn
 NUM_LABELS = 10
@@ -33,29 +33,30 @@ IMAGE_SHAPE = [32, 32, 3]
 
 
 def get_data(name):
-  """Get a split from the dataset.
+    """Get a split from the dataset.
 
-  Args:
-   name: 'train' or 'test'
+    Args:
+     name: 'train' or 'test'
 
-  Returns:
-   images, labels
-  """
+    Returns:
+     images, labels
+    """
 
-  if name == 'train':
-    data = scipy.io.loadmat(DATADIR + 'train_32x32.mat')
-  elif name == 'unlabeled':
-    data = scipy.io.loadmat(DATADIR + 'extra_32x32.mat')
-  elif name == 'test':
-    data = scipy.io.loadmat(DATADIR + 'test_32x32.mat')
+    if name == 'train':
+        data = scipy.io.loadmat(DATADIR + 'train_32x32.mat')
+    elif name == 'unlabeled':
+        data = scipy.io.loadmat(DATADIR + 'extra_32x32.mat')
+    elif name == 'test':
+        data = scipy.io.loadmat(DATADIR + 'test_32x32.mat')
 
-  images = np.rollaxis(data['X'], -1)
-  labels = data['y'].ravel() % 10
+    images = np.rollaxis(data['X'], -1)
+    labels = data['y'].ravel() % 10
 
-  if name == 'unlabeled':
-    return images, None
-  else:
-    return images, labels
+    if name == 'unlabeled':
+        return images, None
+    else:
+        return images, labels
+
 
 # Dataset specific augmentation parameters.
 augmentation_params = dict()

@@ -25,12 +25,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os, math
-import tensorflow as tf
-import semisup
+import math
+import os
 
+import tensorflow as tf
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
+
+import semisup
 
 FLAGS = flags.FLAGS
 
@@ -65,11 +67,11 @@ flags.DEFINE_string('logdir', '/tmp/semisup_cifar', 'Training log path.')
 flags.DEFINE_string('cifar', 'cifar100', 'Which cifar dataset to use')
 
 flags.DEFINE_string('dataset_dir', '/usr/stud/plapp/data/cifar-100-binary', 'Data path')
-#flags.DEFINE_string('dataset_dir', '/usr/stud/plapp/data/cifar-10-batches-bin', 'Data path')
+# flags.DEFINE_string('dataset_dir', '/usr/stud/plapp/data/cifar-10-batches-bin', 'Data path')
 
 from tools import cifar100 as data
 
-print(FLAGS.learning_rate, FLAGS.__flags) # print all flags (useful when logging)
+print(FLAGS.learning_rate, FLAGS.__flags)  # print all flags (useful when logging)
 
 IMAGE_SHAPE = [32, 32, 3]
 NUM_TRAIN_IMAGES = 50000
@@ -77,114 +79,114 @@ TEST_BATCH_SIZE = 200
 steps_per_epoch = math.ceil(NUM_TRAIN_IMAGES / FLAGS.sup_batch_size)
 
 if FLAGS.cifar == 'cifar10':
-  NUM_LABELS = 10
-  TRAIN_FILE = 'train/*'
-  TEST_FILE = 'test_batch.bin'
+    NUM_LABELS = 10
+    TRAIN_FILE = 'train/*'
+    TEST_FILE = 'test_batch.bin'
 else:
-  NUM_LABELS = 100
-  TRAIN_FILE = 'train.bin'
-  TEST_FILE = 'test.bin'
+    NUM_LABELS = 100
+    TRAIN_FILE = 'train.bin'
+    TEST_FILE = 'test.bin'
 
 
 def main(_):
-  unsup_multiplier = NUM_TRAIN_IMAGES / NUM_LABELS / FLAGS.sup_per_class
-  print(unsup_multiplier)
+    unsup_multiplier = NUM_TRAIN_IMAGES / NUM_LABELS / FLAGS.sup_per_class
+    print(unsup_multiplier)
 
-# Sample labeled training subset.
-  seed = FLAGS.sup_seed if FLAGS.sup_seed != -1 else None
+    # Sample labeled training subset.
+    seed = FLAGS.sup_seed if FLAGS.sup_seed != -1 else None
 
-  graph = tf.Graph()
-  with graph.as_default():
-    model = semisup.SemisupModel(semisup.architectures.densenet_model, NUM_LABELS,
-                                 IMAGE_SHAPE, optimizer='sgd')
+    graph = tf.Graph()
+    with graph.as_default():
+        model = semisup.SemisupModel(semisup.architectures.densenet_model, NUM_LABELS,
+                                     IMAGE_SHAPE, optimizer='sgd')
 
-    # Set up inputs.
-    train_sup, train_labels_sup = data.build_input(FLAGS.cifar,
-                                                   os.path.join(FLAGS.dataset_dir, TRAIN_FILE),
-                                                   batch_size=FLAGS.sup_batch_size,
-                                                   mode='train',
-                                                   subset_factor=unsup_multiplier)
-
-    if FLAGS.unsup_batch_size > 0:
-      train_unsup, train_labels_unsup = data.build_input(FLAGS.cifar,
+        # Set up inputs.
+        train_sup, train_labels_sup = data.build_input(FLAGS.cifar,
                                                        os.path.join(FLAGS.dataset_dir, TRAIN_FILE),
-                                                       batch_size=FLAGS.unsup_batch_size,
-                                                       mode='train')
+                                                       batch_size=FLAGS.sup_batch_size,
+                                                       mode='train',
+                                                       subset_factor=unsup_multiplier)
 
-    test_images, test_labels = data.build_input(FLAGS.cifar,
-                                                os.path.join(FLAGS.dataset_dir, TEST_FILE),
-                                                batch_size=TEST_BATCH_SIZE,
-                                                mode='test')
+        if FLAGS.unsup_batch_size > 0:
+            train_unsup, train_labels_unsup = data.build_input(FLAGS.cifar,
+                                                               os.path.join(FLAGS.dataset_dir, TRAIN_FILE),
+                                                               batch_size=FLAGS.unsup_batch_size,
+                                                               mode='train')
 
-    # Compute embeddings and logits.
-    t_sup_emb = model.image_to_embedding(train_sup)
-    t_sup_logit = model.embedding_to_logit(t_sup_emb)
+        test_images, test_labels = data.build_input(FLAGS.cifar,
+                                                    os.path.join(FLAGS.dataset_dir, TEST_FILE),
+                                                    batch_size=TEST_BATCH_SIZE,
+                                                    mode='test')
 
-    # Add losses.
-    if FLAGS.unsup_batch_size > 0:
-      t_unsup_emb = model.image_to_embedding(train_unsup)
-      model.add_semisup_loss(
-            t_sup_emb, t_unsup_emb, train_labels_sup, visit_weight=FLAGS.visit_weight)
+        # Compute embeddings and logits.
+        t_sup_emb = model.image_to_embedding(train_sup)
+        t_sup_logit = model.embedding_to_logit(t_sup_emb)
 
-    model.add_logit_loss(t_sup_logit, train_labels_sup)
+        # Add losses.
+        if FLAGS.unsup_batch_size > 0:
+            t_unsup_emb = model.image_to_embedding(train_unsup)
+            model.add_semisup_loss(
+                    t_sup_emb, t_unsup_emb, train_labels_sup, visit_weight=FLAGS.visit_weight)
 
-    t_learning_rate = tf.train.exponential_decay(
-        FLAGS.learning_rate,
-        model.step,
-        FLAGS.decay_epochs * steps_per_epoch,
-        FLAGS.decay_factor,
-        staircase=True)
-    train_op = model.create_train_op(t_learning_rate)
-    summary_op = tf.summary.merge_all()
+        model.add_logit_loss(t_sup_logit, train_labels_sup)
 
-    summary_writer = tf.summary.FileWriter(FLAGS.logdir, graph)
+        t_learning_rate = tf.train.exponential_decay(
+                FLAGS.learning_rate,
+                model.step,
+                FLAGS.decay_epochs * steps_per_epoch,
+                FLAGS.decay_factor,
+                staircase=True)
+        train_op = model.create_train_op(t_learning_rate)
+        summary_op = tf.summary.merge_all()
 
-    saver = tf.train.Saver()
+        summary_writer = tf.summary.FileWriter(FLAGS.logdir, graph)
 
-  with tf.Session(graph=graph) as sess:
-    tf.global_variables_initializer().run()
+        saver = tf.train.Saver()
 
-    coord = tf.train.Coordinator()
-    threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-    last_epoch = -1
+    with tf.Session(graph=graph) as sess:
+        tf.global_variables_initializer().run()
 
-    for step in range(FLAGS.max_epochs * int(steps_per_epoch)):
-      _, summaries, tl = sess.run([train_op, summary_op, model.train_loss])
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+        last_epoch = -1
 
-      epoch = math.floor(step / steps_per_epoch)
-      if (epoch >= 0 and epoch % FLAGS.eval_interval == 0) or epoch == 1:
-        if epoch == last_epoch: #don't log twice for same epoch
-          continue
+        for step in range(FLAGS.max_epochs * int(steps_per_epoch)):
+            _, summaries, tl = sess.run([train_op, summary_op, model.train_loss])
 
-        last_epoch = epoch
-        num_total_batches = 10000 / TEST_BATCH_SIZE
-        print('Epoch: %d' % epoch)
+            epoch = math.floor(step / steps_per_epoch)
+            if (epoch >= 0 and epoch % FLAGS.eval_interval == 0) or epoch == 1:
+                if epoch == last_epoch:  # don't log twice for same epoch
+                    continue
 
-        t_imgs, t_lbls = model.get_images(test_images, test_labels, num_total_batches, sess)
-        test_pred = model.classify(t_imgs, sess).argmax(-1)
-        conf_mtx = semisup.confusion_matrix(t_lbls, test_pred, NUM_LABELS)
-        test_err = (t_lbls != test_pred).mean() * 100
-        print(conf_mtx)
-        print('Test error: %.2f %%' % test_err)
-        print()
+                last_epoch = epoch
+                num_total_batches = 10000 / TEST_BATCH_SIZE
+                print('Epoch: %d' % epoch)
 
-        t_imgs, t_lbls = model.get_images(train_sup, train_labels_sup, num_total_batches, sess)
-        train_pred = model.classify(t_imgs, sess).argmax(-1)
-        train_err = (t_lbls != train_pred).mean() * 100
-        print('Train error: %.2f %%' % train_err)
+                t_imgs, t_lbls = model.get_images(test_images, test_labels, num_total_batches, sess)
+                test_pred = model.classify(t_imgs, sess).argmax(-1)
+                conf_mtx = semisup.confusion_matrix(t_lbls, test_pred, NUM_LABELS)
+                test_err = (t_lbls != test_pred).mean() * 100
+                print(conf_mtx)
+                print('Test error: %.2f %%' % test_err)
+                print()
 
-        test_summary = tf.Summary(
-            value=[tf.Summary.Value(
-                tag='Test Err', simple_value=test_err)])
+                t_imgs, t_lbls = model.get_images(train_sup, train_labels_sup, num_total_batches, sess)
+                train_pred = model.classify(t_imgs, sess).argmax(-1)
+                train_err = (t_lbls != train_pred).mean() * 100
+                print('Train error: %.2f %%' % train_err)
 
-        summary_writer.add_summary(summaries, step)
-        summary_writer.add_summary(test_summary, step)
+                test_summary = tf.Summary(
+                        value=[tf.Summary.Value(
+                                tag='Test Err', simple_value=test_err)])
 
-        saver.save(sess, FLAGS.logdir, model.step)
+                summary_writer.add_summary(summaries, step)
+                summary_writer.add_summary(test_summary, step)
 
-    coord.request_stop()
-    coord.join(threads)
+                saver.save(sess, FLAGS.logdir, model.step)
+
+        coord.request_stop()
+        coord.join(threads)
 
 
 if __name__ == '__main__':
-  app.run()
+    app.run()

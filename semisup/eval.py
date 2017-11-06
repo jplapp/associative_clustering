@@ -28,11 +28,12 @@ import math
 from functools import partial
 from importlib import import_module
 
-import semisup
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
+
+import semisup
 
 FLAGS = flags.FLAGS
 
@@ -63,6 +64,7 @@ flags.DEFINE_integer('timeout', 1200,
                      'If left as `None`, then the process will wait '
                      'indefinitely.')
 
+
 def main(_):
     # Get dataset-related toolbox.
     dataset_tools = import_module('tools.' + FLAGS.dataset)
@@ -79,7 +81,7 @@ def main(_):
         # Set up input pipeline.
         image, label = tf.train.slice_input_producer([test_images, test_labels])
         images, labels = tf.train.batch(
-            [image, label], batch_size=FLAGS.eval_batch_size)
+                [image, label], batch_size=FLAGS.eval_batch_size)
         images = tf.cast(images, tf.float32)
         labels = tf.cast(labels, tf.int64)
 
@@ -91,21 +93,20 @@ def main(_):
 
         # Create function that defines the network.
         model_function = partial(
-            architecture,
-            is_training=False,
-            new_shape=new_shape,
-            img_shape=image_shape,
-            augmentation_function=None,
-            image_summary=False,
-            emb_size=FLAGS.emb_size)
-
+                architecture,
+                is_training=False,
+                new_shape=new_shape,
+                img_shape=image_shape,
+                augmentation_function=None,
+                image_summary=False,
+                emb_size=FLAGS.emb_size)
 
         # Set up semisup model.
         model = semisup.SemisupModel(
-            model_function,
-            num_labels,
-            image_shape,
-            test_in=images)
+                model_function,
+                num_labels,
+                image_shape,
+                test_in=images)
 
         # Add moving average variables.
         for var in tf.get_collection('moving_vars'):
@@ -119,7 +120,7 @@ def main(_):
         # Accuracy metric for summaries.
         names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
             'Accuracy': slim.metrics.streaming_accuracy(predictions, labels),
-        })
+            })
         for name, value in names_to_values.iteritems():
             tf.summary.scalar(name, value)
 
@@ -129,15 +130,15 @@ def main(_):
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         slim.evaluation.evaluation_loop(
-            master=FLAGS.master,
-            checkpoint_dir=FLAGS.logdir + '/train',
-            logdir=FLAGS.logdir + '/eval',
-            num_evals=num_batches,
-            eval_op=names_to_updates.values(),
-            eval_interval_secs=FLAGS.eval_interval_secs,
-            session_config=config,
-            timeout=FLAGS.timeout
-        )
+                master=FLAGS.master,
+                checkpoint_dir=FLAGS.logdir + '/train',
+                logdir=FLAGS.logdir + '/eval',
+                num_evals=num_batches,
+                eval_op=names_to_updates.values(),
+                eval_interval_secs=FLAGS.eval_interval_secs,
+                session_config=config,
+                timeout=FLAGS.timeout
+                )
 
 
 if __name__ == '__main__':

@@ -21,15 +21,12 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-
-from scipy.optimize import linear_sum_assignment
-
-from sklearn.cluster import KMeans
-from sklearn import svm
-from sklearn.metrics.cluster import normalized_mutual_info_score
-
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
+from scipy.optimize import linear_sum_assignment
+from sklearn import svm
+from sklearn.cluster import KMeans
+from sklearn.metrics.cluster import normalized_mutual_info_score
 
 
 def show_sample_img(img):
@@ -61,7 +58,7 @@ def create_input(input_images, input_labels, batch_size, shuffle=False):
         batch_size = input_labels.shape[0]
     if input_labels is not None:
         image, label = tf.train.slice_input_producer(
-            [input_images, input_labels])
+                [input_images, input_labels])
         if shuffle:
             return tf.train.shuffle_batch([image, label], batch_size=batch_size,
                                           capacity=500, min_after_dequeue=100)
@@ -157,7 +154,7 @@ def create_virt_emb(n, size):
                                         dtype=tf.float32,
                                         trainable=True,
                                         initializer=tf.random_normal_initializer(
-                                            stddev=0.01))
+                                                stddev=0.01))
     return emb
 
 
@@ -315,7 +312,7 @@ class SemisupModel(object):
         if isinstance(self.trainer, tf.train.AdamOptimizer):
             optimizer_slots.extend([
                 self.trainer._beta1_power, self.trainer._beta2_power
-            ])
+                ])
         init_op = tf.variables_initializer(optimizer_slots)
         sess.run(init_op)
 
@@ -333,11 +330,11 @@ class SemisupModel(object):
         scores."""
         with tf.variable_scope('net', reuse=is_training):
             return slim.fully_connected(
-                embedding,
-                self.num_labels,
-                activation_fn=None,
-                weights_regularizer=slim.l2_regularizer(1e-4),
-                scope='logit_fc')
+                    embedding,
+                    self.num_labels,
+                    activation_fn=None,
+                    weights_regularizer=slim.l2_regularizer(1e-4),
+                    scope='logit_fc')
 
     def add_semisup_loss(self, a, b, labels, walker_weight=1.0,
                          visit_weight=1.0, match_scale=1.0, est_err=True):
@@ -356,8 +353,8 @@ class SemisupModel(object):
         equality_matrix = tf.equal(tf.reshape(labels, [-1, 1]), labels)
         equality_matrix = tf.cast(equality_matrix, tf.float32)
         p_target = (equality_matrix / tf.reduce_sum(
-            equality_matrix, [1],
-            keep_dims=True))  # *2  # TODO why does this help??
+                equality_matrix, [1],
+                keep_dims=True))  # *2  # TODO why does this help??
 
         match_ab = tf.matmul(a, b, transpose_b=True,
                              name='match_ab') * match_scale
@@ -372,10 +369,10 @@ class SemisupModel(object):
             self.p_aba = p_aba
 
         loss_aba = tf.losses.softmax_cross_entropy(
-            p_target,
-            tf.log(1e-8 + p_aba),
-            weights=walker_weight,
-            scope='loss_aba')
+                p_target,
+                tf.log(1e-8 + p_aba),
+                weights=walker_weight,
+                scope='loss_aba')
         self.loss_aba = loss_aba
 
         self.add_visit_loss(p_ab, visit_weight, 'b')
@@ -394,7 +391,7 @@ class SemisupModel(object):
         eps = 1e-8
         logits = tf.clip_by_value(logits, eps, 1 - eps)
         entropy = tf.reduce_mean(
-            -tf.reduce_sum(logits * tf.log(logits), reduction_indices=[1]))
+                -tf.reduce_sum(logits * tf.log(logits), reduction_indices=[1]))
         entropy *= weight
         tf.add_to_collection(LOSSES_COLLECTION, entropy)
 
@@ -415,7 +412,7 @@ class SemisupModel(object):
 
         logits_squared = logits ** 2
         kl_div = tf.reduce_mean(
-            tf.reduce_sum(logits_squared * tf.log(logits), 1))
+                tf.reduce_sum(logits_squared * tf.log(logits), 1))
 
         kl_div *= weight
 
@@ -444,7 +441,7 @@ class SemisupModel(object):
         equality_matrix = tf.matmul(p, p, transpose_b=True)
         equality_matrix = tf.cast(equality_matrix, tf.float32)
         p_target = (equality_matrix / tf.reduce_sum(
-            equality_matrix, [1], keep_dims=True))
+                equality_matrix, [1], keep_dims=True))
 
         match_ab = tf.matmul(a, b, transpose_b=True, name='match_ab')
         p_ab = tf.nn.softmax(match_ab, name='p_ab')
@@ -458,10 +455,10 @@ class SemisupModel(object):
         # self.create_walk_statistics(p_aba, equality_matrix)
 
         loss_aba = tf.losses.softmax_cross_entropy(
-            p_target,
-            tf.log(1e-8 + p_aba),
-            weights=walker_weight,
-            scope='loss_aba' + str(stop_gradient))
+                p_target,
+                tf.log(1e-8 + p_aba),
+                weights=walker_weight,
+                scope='loss_aba' + str(stop_gradient))
 
         self.add_visit_loss(p_ab, visit_weight, 'b' + str(stop_gradient))
 
@@ -476,13 +473,13 @@ class SemisupModel(object):
           weight: Loss weight.
         """
         visit_probability = tf.reduce_mean(
-            p, [0], keep_dims=True, name='visit_prob' + name)
+                p, [0], keep_dims=True, name='visit_prob' + name)
         t_nb = tf.shape(p)[1]
         visit_loss = tf.losses.softmax_cross_entropy(
-            tf.fill([1, t_nb], 1.0 / tf.cast(t_nb, tf.float32)),
-            tf.log(1e-8 + visit_probability),
-            weights=weight,
-            scope='loss_visit' + name)
+                tf.fill([1, t_nb], 1.0 / tf.cast(t_nb, tf.float32)),
+                tf.log(1e-8 + visit_probability),
+                weights=weight,
+                scope='loss_visit' + name)
 
         tf.summary.scalar('Loss_Visit' + name, visit_loss)
 
@@ -490,11 +487,11 @@ class SemisupModel(object):
         """Add supervised classification loss to the model."""
 
         logit_loss = tf.losses.softmax_cross_entropy(
-            tf.one_hot(labels, logits.get_shape()[-1]),
-            logits,
-            scope='loss_logit',
-            weights=weight,
-            label_smoothing=smoothing)
+                tf.one_hot(labels, logits.get_shape()[-1]),
+                logits,
+                scope='loss_logit',
+                weights=weight,
+                label_smoothing=smoothing)
 
     def create_walk_statistics(self, p_aba, equality_matrix):
         """Adds "walker" loss statistics to the graph.
@@ -512,7 +509,7 @@ class SemisupModel(object):
         per_row_accuracy = 1.0 - tf.reduce_sum((equality_matrix * p_aba),
                                                1) ** 0.5
         estimate_error = tf.reduce_mean(
-            1.0 - per_row_accuracy, name=p_aba.name[:-2] + '_esterr')
+                1.0 - per_row_accuracy, name=p_aba.name[:-2] + '_esterr')
         self.add_average(estimate_error)
         self.add_average(p_aba)
 
@@ -525,7 +522,7 @@ class SemisupModel(object):
         tf.add_to_collection(tf.GraphKeys.UPDATE_OPS,
                              self.ema.apply([variable]))
         average_variable = tf.identity(
-            self.ema.average(variable), name=variable.name[:-2] + '_avg')
+                self.ema.average(variable), name=variable.name[:-2] + '_avg')
         return average_variable
 
     def add_emb_regularization(self, embs, weight):
@@ -541,8 +538,8 @@ class SemisupModel(object):
         """Create and return training operation."""
 
         slim.model_analyzer.analyze_vars(
-            tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES),
-            print_info=True)
+                tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES),
+                print_info=True)
 
         print(tf.losses.get_losses())
 
@@ -555,7 +552,7 @@ class SemisupModel(object):
 
         if self.optimizer == 'sgd':
             self.trainer = tf.train.MomentumOptimizer(
-                learning_rate, 0.9, use_nesterov=False)
+                    learning_rate, 0.9, use_nesterov=False)
         elif self.optimizer == 'adam':
             self.trainer = tf.train.AdamOptimizer(learning_rate,
                                                   beta1=self.beta1,
@@ -688,11 +685,11 @@ class SemisupModel(object):
 
         # TODO(haeusser) use xentropy without softmax
         t_xentropy = tf.losses.softmax_cross_entropy(
-            tf_repeat(t_all_logits_softmaxed, [batch_size, 1]),  # "labels"
-            tf.tile(t_all_logits, [batch_size, 1]),  # will be softmaxed
-            label_smoothing=label_smoothing,
-            loss_collection=None,  # this is not the final loss yet
-        )
+                tf_repeat(t_all_logits_softmaxed, [batch_size, 1]),  # "labels"
+                tf.tile(t_all_logits, [batch_size, 1]),  # will be softmaxed
+                label_smoothing=label_smoothing,
+                loss_collection=None,  # this is not the final loss yet
+                )
 
         t_target = tf.ones([batch_size ** 2], dtype=tf.float64) - t_xentropy
 

@@ -1,6 +1,7 @@
-import semisup
 import numpy as np
 import tensorflow as tf
+
+import semisup
 
 with tf.Graph().as_default():
     batch_size = 100
@@ -31,6 +32,7 @@ with tf.Graph().as_default():
     t_embs_bad = tf.random_normal((batch_size, emb_size), dtype=np.float64)
     t_logits_bad = tf.random_normal((batch_size, num_classes), dtype=np.float64)
 
+
     def dummy(*args, **kwargs):
         return np.zeros((100, 128))
 
@@ -41,16 +43,16 @@ with tf.Graph().as_default():
                                                 t_logits,
                                                 t_logits, batch_size)
     t_loss_bad_1 = model.add_transformation_loss(t_embs, t_embs_bad,
-                                            t_logits,
-                                            t_logits, batch_size)
+                                                 t_logits,
+                                                 t_logits, batch_size)
     t_loss_bad_2 = model.add_transformation_loss(t_embs, t_embs,
-                                            t_logits,
-                                            t_logits_bad, batch_size)
+                                                 t_logits,
+                                                 t_logits_bad, batch_size)
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         [np_loss_good, np_loss_bad_1, np_loss_bad_2, np_embs] = sess.run(
-            [t_loss_good, t_loss_bad_1, t_loss_bad_2, t_embs])
+                [t_loss_good, t_loss_bad_1, t_loss_bad_2, t_embs])
         print('good loss', np_loss_good)
         print('bad loss 1', np_loss_bad_1)
         print('bad loss 2', np_loss_bad_2)
