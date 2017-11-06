@@ -6,6 +6,7 @@ with tf.Graph().as_default():
     batch_size = 100
     emb_size = 128
     num_classes = 10
+    noise_factor = .1
 
     embeddings = []
     logits = []
@@ -16,9 +17,9 @@ with tf.Graph().as_default():
 
     for b in range(batch_size):
         c = np.random.randint(0, num_classes)
-        emb = class_embs[c] + np.random.uniform(-0.3, 0.3, emb_size)
+        emb = class_embs[c] + np.random.uniform(-noise_factor, noise_factor, emb_size)
         embeddings.append(emb)
-        logit = logit_embs[c] + np.random.uniform(-0.3, 0.3, num_classes)
+        logit = logit_embs[c] + np.random.uniform(-noise_factor, noise_factor, num_classes)
         logits.append(logit)
 
     embeddings = np.array(embeddings, dtype=np.float64)
