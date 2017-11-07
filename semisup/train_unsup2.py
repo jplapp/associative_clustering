@@ -164,17 +164,17 @@ def main(_):
         t_images = tf.placeholder("float", shape=[None] + image_shape)
 
         dataset = Dataset.from_tensor_slices(t_images)
-        dataset = dataset.shuffle(buffer_size=5000, seed=47)  # important, so that we have the same images in both sets
+        dataset = dataset.shuffle(buffer_size=10000, seed=47)  # important, so that we have the same images in both sets
 
         # parameters for buffering during augmentation. Only influence training speed.
-        nt = 2
-        b = 500
+        nt = 3
+        b = 1000
 
         rf = FLAGS.num_augmented_samples
 
         augmented_set = dataset
         if FLAGS.shuffle_augmented_samples:
-            augmented_set = augmented_set.shuffle(buffer_size=5000, seed=47)
+            augmented_set = augmented_set.shuffle(buffer_size=10000, seed=47)
 
         # get multiple augmented versions of the same image - they should later have similar embeddings
         augmented_set = augmented_set.interleave(lambda x: Dataset.from_tensors(x).repeat(rf), cycle_length=1,
