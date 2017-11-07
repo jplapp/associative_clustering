@@ -29,6 +29,8 @@ def apply_augmentation(image, target_shape, params):
                     dtype=tf.float32,
                     seed=None,
                     name='random_angle')
+            # tf rotate is reaaally slow
+            #image = tf.contrib.image.rotate(image, angle * np.pi / 180, interpolation='BILINEAR')
             r = rotate(image, angle)
             image = r[0]
 

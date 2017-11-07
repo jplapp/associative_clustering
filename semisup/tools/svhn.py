@@ -32,7 +32,7 @@ NUM_LABELS = 10
 IMAGE_SHAPE = [32, 32, 3]
 
 
-def get_data(name):
+def get_data(name, max_num=None):
     """Get a split from the dataset.
 
     Args:
@@ -69,4 +69,4 @@ augmentation_params['contrast_upper'] = 1.8
 augmentation_params['hue_max_delta'] = 0.5
 augmentation_params['noise_std'] = 0.05
 augmentation_params['flip'] = False
-augmentation_params['max_rotate_angle'] = 0
+augmentation_params['max_rotate_angle'] = 10

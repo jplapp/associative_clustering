@@ -104,6 +104,7 @@ flags.DEFINE_string('architecture', 'mnist_model_dropout', 'Which network archit
 flags.DEFINE_string('restore_checkpoint', None, 'restore weights from checkpoint, e.g. some autoencoder pretraining')
 flags.DEFINE_bool('init_with_kmeans', False, 'Initialize centroids using kmeans after reg_warmup_steps steps.')
 flags.DEFINE_bool('normalize_embeddings', False, 'Normalize embeddings (l2 norm = 1)')
+flags.DEFINE_bool('volta', False, 'Use more CPU for preprocessing to load GPU')
 flags.DEFINE_bool('shuffle_augmented_samples', False,
                   'If true, the augmented samples are shuffled separately. Otherwise, a batch contains augmentated '
                   'samples of its non-augmented samples')
@@ -140,6 +141,11 @@ def main(_):
         train_images = (train_images - 128.) / 128.
         test_images = (test_images - 128.) / 128.
 
+    if FLAGS.dataset == 'mnist' and FLAGS.architecture == 'resnet_mnist_model':
+      FLAGS.emb_size = 64
+    #if FLAGS.dataset == 'svhn' and FLAGS.architecture == 'resnet_cifar_model':
+    #  FLAGS.emb_size = 64
+
     image_shape_crop = image_shape
     c_test_imgs = test_images
     c_train_imgs = train_images
@@ -170,8 +176,8 @@ def main(_):
         dataset = dataset.shuffle(buffer_size=10000, seed=47)  # important, so that we have the same images in both sets
 
         # parameters for buffering during augmentation. Only influence training speed.
-        nt = 3
-        b = 1000
+        nt = 8 if FLAGS.volta else 4    # that's not even enough, but there are no more CPUs
+        b = 10000
 
         rf = FLAGS.num_augmented_samples
 
@@ -180,12 +186,11 @@ def main(_):
             augmented_set = augmented_set.shuffle(buffer_size=10000, seed=47)
 
         # get multiple augmented versions of the same image - they should later have similar embeddings
-        augmented_set = augmented_set.interleave(lambda x: Dataset.from_tensors(x).repeat(rf), cycle_length=1,
-                                                 block_length=rf)
+        augmented_set = augmented_set.flat_map(lambda x: Dataset.from_tensors(x).repeat(rf))
 
         augmented_set = augmented_set.map(aug, num_threads=nt, output_buffer_size=b)
 
-        dataset = dataset.map(random_crop, num_threads=nt, output_buffer_size=b)
+        dataset = dataset.map(random_crop, num_threads=1, output_buffer_size=b)
         dataset = dataset.repeat().batch(FLAGS.unsup_batch_size)
         augmented_set = augmented_set.repeat().batch(FLAGS.unsup_batch_size * rf)
 
@@ -300,6 +305,8 @@ def main(_):
         learning_rate_ = FLAGS.learning_rate
 
         for step in range(FLAGS.max_steps):
+            import time
+            start = time.time()
             if FLAGS.init_with_kmeans:
                 if step <= reg_warmup_steps:
                     walker_weight_ = 0
@@ -397,6 +404,7 @@ def main(_):
                         summary = tf.Summary(
                                 value=[tf.Summary.Value(tag=key, simple_value=value)])
                         summary_writer.add_summary(summary, step)
+            #print(time.time() -start)
 
         svm_test_score, _ = model.train_and_eval_svm(c_train_imgs, train_labels_svm, c_test_imgs, test_labels, sess,
                                                      num_samples=10000)

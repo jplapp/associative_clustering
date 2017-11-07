@@ -111,9 +111,7 @@ def resnet_cifar_model(inputs,
     pre_emb = _find_tensor('final_avg_pool', logits.graph)
     emb = tf.contrib.slim.flatten(pre_emb)
 
-    # emb are already of size 64, no need to add another fc layer
-    if resnet_size > 32:
-     emb = tf.layers.dense(inputs=emb, units=emb_size)
+    emb = tf.layers.dense(inputs=emb, units=emb_size)
 
     emb = tf.identity(emb, 'embeddings')
 
@@ -121,7 +119,7 @@ def resnet_cifar_model(inputs,
 
 
 from official.resnet.resnet_model import conv2d_fixed_padding, fixed_padding, bottleneck_block,building_block,block_layer,batch_norm_relu
-def mnist_resnet_v2_generator(num_blocks=5, data_format=None):
+def mnist_resnet_v2_generator(num_blocks=5, final_pool_size=8, data_format=None):
   """Generator for MNIST resnet model.
      This is ResNet30 for cifar - with a final avg pooling of size 7 instead of 8, as mnist images are slightly smaller (28px vs 32px)
 
@@ -168,7 +166,7 @@ def mnist_resnet_v2_generator(num_blocks=5, data_format=None):
 
     inputs = batch_norm_relu(inputs, is_training, data_format)
     inputs = tf.layers.average_pooling2d(
-        inputs=inputs, pool_size=7, strides=1, padding='VALID',
+        inputs=inputs, pool_size=final_pool_size, strides=1, padding='VALID',
         data_format=data_format)
     inputs = tf.identity(inputs, 'final_avg_pool')
 
@@ -211,7 +209,7 @@ def stl10_resnet_v2_generator(data_format=None):
         inputs=inputs, pool_size=2, strides=2, padding='SAME',
         data_format=data_format)
     inputs = tf.identity(inputs, 'initial_max_pool')
-    print(inputs.shape)
+
     inputs = block_layer(
         inputs=inputs, filters=32, block_fn=building_block, blocks=num_blocks,
         strides=1, is_training=is_training, name='block_layer1',
@@ -229,7 +227,6 @@ def stl10_resnet_v2_generator(data_format=None):
         strides=2, is_training=is_training, name='block_layer4',
         data_format=data_format)
 
-    print(inputs.shape)
     inputs = batch_norm_relu(inputs, is_training, data_format)
     inputs = tf.layers.average_pooling2d(
         inputs=inputs, pool_size=8, strides=1, padding='VALID',
@@ -272,7 +269,6 @@ def resnet_stl10_model(inputs,
     network = stl10_resnet_v2_generator()
     net = network(net, is_training)
     net = tf.contrib.slim.flatten(net)
-    print(net.shape)
     emb = tf.layers.dense(inputs=net, units=emb_size)
 
     emb = tf.identity(emb, 'embeddings')
@@ -307,7 +303,7 @@ def resnet_mnist_model(inputs,
         tf.summary.image('Inputs', inputs, max_outputs=3)
 
     net = inputs
-    network = mnist_resnet_v2_generator(num_blocks)
+    network = mnist_resnet_v2_generator(num_blocks, final_pool_size=7)
     net = network(net, is_training)
     net = tf.contrib.slim.flatten(net)
     net = slim.dropout(net, dropout_keep_prob, scope='dropout')
