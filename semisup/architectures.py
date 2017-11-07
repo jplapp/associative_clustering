@@ -204,27 +204,32 @@ def stl10_resnet_v2_generator(data_format=None):
       inputs = tf.transpose(inputs, [0, 3, 1, 2])
 
     inputs = conv2d_fixed_padding(
-        inputs=inputs, filters=16, kernel_size=5, strides=2,
+        inputs=inputs, filters=16, kernel_size=5, strides=1,
         data_format=data_format)
     inputs = tf.identity(inputs, 'initial_conv')
-
+    inputs = tf.layers.max_pooling2d(
+        inputs=inputs, pool_size=2, strides=2, padding='SAME',
+        data_format=data_format)
+    inputs = tf.identity(inputs, 'initial_max_pool')
+    print(inputs.shape)
     inputs = block_layer(
         inputs=inputs, filters=32, block_fn=building_block, blocks=num_blocks,
         strides=1, is_training=is_training, name='block_layer1',
         data_format=data_format)
     inputs = block_layer(
         inputs=inputs, filters=64, block_fn=building_block, blocks=num_blocks,
-        strides=1, is_training=is_training, name='block_layer1',
+        strides=1, is_training=is_training, name='block_layer2',
         data_format=data_format)
     inputs = block_layer(
         inputs=inputs, filters=128, block_fn=building_block, blocks=num_blocks,
-        strides=2, is_training=is_training, name='block_layer2',
+        strides=2, is_training=is_training, name='block_layer3',
         data_format=data_format)
     inputs = block_layer(
         inputs=inputs, filters=256, block_fn=building_block, blocks=num_blocks,
-        strides=2, is_training=is_training, name='block_layer3',
+        strides=2, is_training=is_training, name='block_layer4',
         data_format=data_format)
 
+    print(inputs.shape)
     inputs = batch_norm_relu(inputs, is_training, data_format)
     inputs = tf.layers.average_pooling2d(
         inputs=inputs, pool_size=8, strides=1, padding='VALID',
