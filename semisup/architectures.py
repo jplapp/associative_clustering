@@ -319,6 +319,7 @@ def stl10_ex_cnn(inputs,
                  img_shape=None,
                  new_shape=None,
                  dropout_keep_prob=None,
+                 num_blocks=None,
                  image_summary=False,
                  batch_norm_decay=0.99):
     """Construct the image-to-embedding model."""
@@ -531,6 +532,7 @@ def stl10_model(inputs,
                 img_shape=None,
                 new_shape=None,
                 dropout_keep_prob=None,
+                num_blocks=None,
                 image_summary=False,
                 batch_norm_decay=0.99):
     """Construct the image-to-embedding model."""
@@ -586,6 +588,7 @@ def stl10_model_direct(inputs,
                        img_shape=None,
                        new_shape=None,
                        dropout_keep_prob=None,
+                       num_blocks=None,
                        image_summary=False,
                        batch_norm_decay=0.99):
     """Construct the image-to-embedding model."""
@@ -644,6 +647,7 @@ def mnist_model(inputs,
                 img_shape=None,
                 new_shape=None,
                 dropout_keep_prob=None,
+                num_blocks=None,
                 augmentation_function=None,
                 image_summary=False):  # pylint: disable=unused-argument
 
@@ -696,6 +700,7 @@ def mnist_model_dropout(inputs,
                         img_shape=None,
                         new_shape=None,
                         dropout_keep_prob=0.8,
+                        num_blocks=None,
                         augmentation_function=None,
                         image_summary=False):  # pylint: disable=unused-argument
 
@@ -757,6 +762,7 @@ def mnist_model_dropout_autoencoder(inputs,
                                     img_shape=None,
                                     new_shape=None,
                                     dropout_keep_prob=0.8,
+                                    num_blocks=None,
                                     augmentation_function=None,
                                     image_summary=False):  # pylint: disable=unused-argument
 
@@ -828,6 +834,7 @@ def svhn_model_dropout_autoencoder(inputs,
                                    img_shape=None,
                                    new_shape=None,
                                    dropout_keep_prob=0.8,
+                                   num_blocks=None,
                                    augmentation_function=None,
                                    image_summary=False):  # pylint: disable=unused-argument
 
@@ -899,6 +906,7 @@ def mnist_model_dropout_normalized(inputs,
                                    img_shape=None,
                                    new_shape=None,
                                    dropout_keep_prob=0.8,
+                                   num_blocks=None,
                                    augmentation_function=None,
                                    image_summary=False):  # pylint: disable=unused-argument
 
@@ -961,6 +969,7 @@ def inception_model(inputs,
                     new_shape=None,
                     batch_norm_decay=None,
                     dropout_keep_prob=0.8,
+                    num_blocks=None,
                     min_depth=16,
                     depth_multiplier=1.0,
                     spatial_squeeze=True,
@@ -1020,6 +1029,7 @@ def inception_model_small(inputs,
 
 
 def vgg16_model(inputs, emb_size=128, is_training=True, img_shape=None, new_shape=None, dropout_keep_prob=0.5,
+                num_blocks=None,
                 l2_weight=0.0005,
                 end_point=None, **kwargs):
     inputs = tf.cast(inputs, tf.float32)
