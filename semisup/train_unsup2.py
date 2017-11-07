@@ -26,6 +26,8 @@ e.g. 99% on MNIST in 10000 steps:
 
   STL-10
   python3 train_unsup2.py --dataset stl10 --architecture resnet_stl10_model --learning_rate 0.001 --warmup_steps 1 --init_with_kmeans --reg_warmup_steps 30000 --decay_steps 10000 --max_steps 35000
+
+  python3 /efs/lba_tf/semisup/train_unsup2.py --dataset stl10 --architecture resnet_stl10_model --learning_rate 0.001 --warmup_steps 2000 --init_with_kmeans --reg_warmup_steps 30000 --decay_steps 10000 --max_steps 35000
 """
 
 from __future__ import absolute_import
@@ -348,8 +350,7 @@ def main(_):
 
             if FLAGS.svm_test_interval is not None and step % FLAGS.svm_test_interval == 0 and step > 0:
                 svm_test_score, _ = model.train_and_eval_svm(c_train_imgs, train_labels_svm, c_test_imgs, test_labels,
-                                                             sess,
-                                                             num_samples=10000)
+                                                             sess, num_samples=5000)
                 print('svm score:', svm_test_score)
 
             if step % FLAGS.decay_steps == 0 and step > 0:
@@ -396,7 +397,7 @@ def main(_):
                                 value=[tf.Summary.Value(tag=key, simple_value=value)])
                         summary_writer.add_summary(summary, step)
 
-        svm_test_score, _ = model.train_and_eval_svm(train_images, train_labels_svm, c_test_imgs, test_labels, sess,
+        svm_test_score, _ = model.train_and_eval_svm(c_train_imgs, train_labels_svm, c_test_imgs, test_labels, sess,
                                                      num_samples=10000)
 
         if FLAGS.logdir is not None:
