@@ -13,11 +13,16 @@ usage:
 
 e.g. 99% on MNIST in 10000 steps:
  python3 train_unsup2.py  --l1_weight 0 --warmup_steps 2000 --reg_warmup_steps 1000 --visit_weight_base 1
- --learning_rate 0.001 --init_with_kmeans
+ --learning_rate 0.001 --init_with_kmeans --max_steps 12000
+
+ MNIST with restnet-18: ~98%   (these are the same hps as above)
+ python3 train_unsup2.py --architecture resnet_mnist_model --init_with_kmeans --learning_rate 0.001 --reg_warmup_steps 1000 --visit_weight_base 1 --warmup_steps 2000 --emb_size 64  --max_steps 12000 --l1_weight 0
 
  or 49% on FRGC:
-  python3 train_unsup2.py  --l1_weight 0 --warmup_steps 3000 --reg_warmup_steps 2000 --visit_weight_base 0.1
-  --learning_rate 0.001 --init_with_kmeans --dataset frgc
+  python3 train_unsup2.py  --l1_weight 0 --warmup_steps 3000 --reg_warmup_steps 2000 --visit_weight_base 0.05 --learning_rate 0.001 --init_with_kmeans --dataset frgc
+
+ 33% on cifar
+   python3 train_unsup2.py  --l1_weight 0 --warmup_steps 4000 --reg_warmup_steps 3000 --decay_steps 10000 --visit_weight_base 0.5 --learning_rate 0.001 --init_with_kmeans --dataset cifar_inmemory --architecture resnet_cifar_model --emb_size 64
 """
 
 from __future__ import absolute_import
@@ -73,6 +78,7 @@ flags.DEFINE_bool('normalize_input', True, 'Normalize input images to be between
 
 flags.DEFINE_integer('max_steps', 200000, 'Number of training steps.')
 flags.DEFINE_integer('emb_size', 128, 'Dimension of embedding space')
+flags.DEFINE_integer('num_blocks', 3, 'Number of blocks in resnet')
 flags.DEFINE_integer('num_augmented_samples', 3, 'Number of augmented samples for each image.')
 flags.DEFINE_float('scale_match_ab', 1,
                    'How to scale match ab to prevent numeric instability. Use when using embedding normalization')
@@ -184,7 +190,7 @@ def main(_):
 
         model = semisup.SemisupModel(model_func, num_labels, image_shape_crop, optimizer='adam',
                                      emb_size=FLAGS.emb_size,
-                                     dropout_keep_prob=FLAGS.dropout_keep_prob,
+                                     dropout_keep_prob=FLAGS.dropout_keep_prob, num_blocks=FLAGS.num_blocks,
                                      normalize_embeddings=FLAGS.normalize_embeddings, beta1=FLAGS.beta1,
                                      beta2=FLAGS.beta2)
 
@@ -220,7 +226,7 @@ def main(_):
         if FLAGS.normalize_embeddings:
             t_sup_logit = model.embedding_to_logit(tf.nn.l2_normalize(t_sup_emb, dim=1))
             model.add_semisup_loss(
-                    tf.nn.l2_normalize(t_sup_emb, dim=1), tf.nn.l2_normalize(t_all_unsup_emb, dim=1), t_sup_labels,
+                    tf.nn.l2_normalize(t_sup_emb, dim=1), tf.nn.l2_normalize(t_unsup_emb, dim=1), t_sup_labels,
                     walker_weight=walker_weight, visit_weight=visit_weight,
                     match_scale=FLAGS.scale_match_ab)
             model.reg_loss_aba = model.add_semisup_loss(
@@ -247,7 +253,7 @@ def main(_):
         model.add_emb_regularization(t_sup_emb, weight=t_l1_weight)
 
         # make l2 norm = 3
-        model.add_emb_normalization(t_sup_emb, weight=t_norm_weight * 5, target=3)
+        model.add_emb_normalization(t_sup_emb, weight=t_norm_weight, target=3)
         model.add_emb_normalization(t_all_unsup_emb, weight=t_norm_weight, target=3)
 
         gradient_multipliers = {t_sup_emb: 1 - FLAGS.centroid_momentum}
@@ -279,34 +285,37 @@ def main(_):
         from numpy.linalg import norm
 
         reg_warmup_steps = FLAGS.reg_warmup_steps
+        logit_weight_ = FLAGS.logit_weight
         rwalker_weight_ = FLAGS.rwalker_weight
         rvisit_weight_ = FLAGS.rvisit_weight
         learning_rate_ = FLAGS.learning_rate
 
         for step in range(FLAGS.max_steps):
             if FLAGS.init_with_kmeans:
-                if step < reg_warmup_steps:
+                if step <= reg_warmup_steps:
                     walker_weight_ = 0
                     visit_weight_ = 0
+                    logit_weight_ = 0
                 else:
                     walker_weight_ = FLAGS.walker_weight
                     visit_weight_ = FLAGS.visit_weight_base
+                    logit_weight_ = FLAGS.logit_weight
             else:
                 walker_weight_ = apply_envelope("log", step, FLAGS.walker_weight, reg_warmup_steps, 0)
                 visit_weight_ = apply_envelope("log", step, FLAGS.visit_weight_base, reg_warmup_steps, 0)
 
             _, train_loss, summaries, centroids, unsup_emb, reg_unsup_emb, estimated_error, p_ab, p_ba, p_aba, \
-            reg_loss, entropy_ = sess.run(
+            reg_loss = sess.run(
                     [train_op, model.train_loss, summary_op, t_sup_emb, t_unsup_emb, t_reg_unsup_emb,
                      model.estimate_error, model.p_ab,
-                     model.p_ba, model.p_aba, model.reg_loss_aba, entropy], {
+                     model.p_ba, model.p_aba, model.reg_loss_aba], {
                         rwalker_weight: rwalker_weight_,
                         rvisit_weight: rvisit_weight_,
                         walker_weight: walker_weight_,
                         visit_weight: visit_weight_,
                         t_l1_weight: FLAGS.l1_weight,
                         t_norm_weight: FLAGS.norm_weight,
-                        t_logit_weight: FLAGS.logit_weight,
+                        t_logit_weight: logit_weight_,
                         t_learning_rate: 1e-6 + apply_envelope("log", step, learning_rate_, FLAGS.warmup_steps, 0)
                         })
 
@@ -370,15 +379,17 @@ def main(_):
 
                     summary_writer.add_summary(summaries, step)
 
-                    for key, value in sum_values:
+                    for key, value in sum_values.items():
                         summary = tf.Summary(
                                 value=[tf.Summary.Value(tag=key, simple_value=value)])
                         summary_writer.add_summary(summary, step)
 
-                    saver.save(sess, FLAGS.logdir, model.step)
-
         svm_test_score, _ = model.train_and_eval_svm(train_images, train_labels_svm, c_test_imgs, test_labels, sess,
                                                      num_samples=10000)
+
+        if FLAGS.logdir is not None:
+            path = saver.save(sess, FLAGS.logdir, model.step)
+            print('@@model_path:%s' % path)
 
         print('FINAL RESULTS:')
         print(conf_mtx)

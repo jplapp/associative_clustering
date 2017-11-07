@@ -259,7 +259,7 @@ class SemisupModel(object):
     """Helper class for setting up semi-supervised training."""
 
     def __init__(self, model_func, num_labels, input_shape, test_in=None,
-                 optimizer='adam', beta1=0.9, beta2=0.999,
+                 optimizer='adam', beta1=0.9, beta2=0.999, num_blocks=None,
                  emb_size=128, dropout_keep_prob=1, augmentation_function=None,
                  normalize_embeddings=False):
         """Initialize SemisupModel class.
@@ -289,6 +289,7 @@ class SemisupModel(object):
         self.optimizer = optimizer
         self.beta1 = beta1
         self.beta2 = beta2
+        self.num_blocks = num_blocks
         self.dropout_keep_prob = dropout_keep_prob
 
         if test_in is not None:
@@ -322,6 +323,7 @@ class SemisupModel(object):
             model = self.model_func(images, is_training=is_training,
                                     emb_size=self.emb_size,
                                     dropout_keep_prob=self.dropout_keep_prob,
+                                    num_blocks=self.num_blocks,
                                     augmentation_function=self.augmentation_function)
             return model
 
@@ -354,7 +356,7 @@ class SemisupModel(object):
         equality_matrix = tf.cast(equality_matrix, tf.float32)
         p_target = (equality_matrix / tf.reduce_sum(
                 equality_matrix, [1],
-                keep_dims=True))  # *2  # TODO why does this help??
+                keep_dims=True))
 
         match_ab = tf.matmul(a, b, transpose_b=True,
                              name='match_ab') * match_scale
@@ -405,14 +407,16 @@ class SemisupModel(object):
           Minimize KL distance between logits and logits^2
 
         """
-        # kl_dist = tf.contrib.distributions.kl(logits**2, logits)
-        # logits_squared / logits = logits
+        # kl_div = tf.contrib.distributions.kl(logits**2, logits)
         eps = 1e-8
-        logits = tf.clip_by_value(logits, eps, 1 - eps)
+        softmaxed_logits = tf.nn.softmax(logits)
+        softmaxed_logits = tf.clip_by_value(softmaxed_logits, eps, 1 - eps)
 
-        logits_squared = logits ** 2
+        logits_squared = softmaxed_logits ** 2
+
+        # logits_squared / logits = logits
         kl_div = tf.reduce_mean(
-                tf.reduce_sum(logits_squared * tf.log(logits), 1))
+                tf.abs(tf.reduce_sum(logits_squared * tf.log(softmaxed_logits), 1)))
 
         kl_div *= weight
 
@@ -492,6 +496,7 @@ class SemisupModel(object):
                 scope='loss_logit',
                 weights=weight,
                 label_smoothing=smoothing)
+        return logit_loss
 
     def create_walk_statistics(self, p_aba, equality_matrix):
         """Adds "walker" loss statistics to the graph.
@@ -532,7 +537,7 @@ class SemisupModel(object):
     def add_emb_normalization(self, embs, weight, target=1):
         """weight should be a tensor"""
         l2n = tf.norm(embs, axis=1)
-        l1_loss((l2n - target) ** 2, weight)
+        tf.add_to_collection(LOSSES_COLLECTION, tf.reduce_mean((l2n - target) ** 2) * weight)
 
     def create_train_op(self, learning_rate, gradient_multipliers=None):
         """Create and return training operation."""
