@@ -108,7 +108,8 @@ flags.DEFINE_bool('shuffle_augmented_samples', False,
                   'If true, the augmented samples are shuffled separately. Otherwise, a batch contains augmentated '
                   'samples of its non-augmented samples')
 
-print(FLAGS.learning_rate, FLAGS.__flags)  # print all flags (useful when logging)
+print(FLAGS.learning_rate)
+print("flags:", FLAGS.__flags)  # print all flags (useful when logging)
 
 import numpy as np
 
