@@ -15,14 +15,17 @@ e.g. 99% on MNIST in 10000 steps:
  python3 train_unsup2.py  --l1_weight 0 --warmup_steps 2000 --reg_warmup_steps 1000 --visit_weight_base 1
  --learning_rate 0.001 --init_with_kmeans --max_steps 12000
 
- MNIST with restnet-18: ~98%   (these are the same hps as above)
- python3 train_unsup2.py --architecture resnet_mnist_model --init_with_kmeans --learning_rate 0.001 --reg_warmup_steps 1000 --visit_weight_base 1 --warmup_steps 2000 --emb_size 64  --max_steps 12000 --l1_weight 0
+ MNIST with restnet-12: ~98%   (these are the same hps as above)
+ python3 train_unsup2.py --architecture resnet_mnist_model --init_with_kmeans --learning_rate 0.001 --reg_warmup_steps 1000 --visit_weight_base 1 --warmup_steps 2000 --emb_size 64  --max_steps 12000 --l1_weight 0 --num_blocks 2
 
  or 49% on FRGC:
   python3 train_unsup2.py  --l1_weight 0 --warmup_steps 3000 --reg_warmup_steps 2000 --visit_weight_base 0.05 --learning_rate 0.001 --init_with_kmeans --dataset frgc
 
  33% on cifar
    python3 train_unsup2.py  --l1_weight 0 --warmup_steps 4000 --reg_warmup_steps 3000 --decay_steps 10000 --visit_weight_base 0.5 --learning_rate 0.001 --init_with_kmeans --dataset cifar_inmemory --architecture resnet_cifar_model --emb_size 64
+
+  STL-10
+  python3 train_unsup2.py --dataset stl10 --architecture resnet_stl10_model --learning_rate 0.001 --warmup_steps 1 --init_with_kmeans --reg_warmup_steps 30000 --decay_steps 10000 --max_steps 35000
 """
 
 from __future__ import absolute_import
@@ -47,6 +50,7 @@ flags.DEFINE_integer('unsup_batch_size', 100,
 flags.DEFINE_integer('eval_interval', 1000,
                      'Number of steps between evaluations.')
 
+flags.DEFINE_integer('svm_test_interval', 10000, 'Number of steps between SVM evaluations.')
 flags.DEFINE_float('learning_rate', 2e-4, 'Initial learning rate.')
 
 flags.DEFINE_integer('warmup_steps', 1000, 'Warmup steps.')
@@ -135,6 +139,7 @@ def main(_):
 
     image_shape_crop = image_shape
     c_test_imgs = test_images
+    c_train_imgs = train_images
 
     # crop images to some random region. Intuitively, images should belong to the same cluster,
     # even if a part of the image is missing
@@ -143,6 +148,7 @@ def main(_):
     if FLAGS.dataset == 'stl10':
         image_shape_crop = [64, 64, 3]
         c_test_imgs = test_images[:, 16:80, 16:80]
+        c_train_imgs = train_images[:, 16:80, 16:80]
 
     def aug(image):
         return apply_augmentation(image, target_shape=image_shape_crop, params=dataset_tools.augmentation_params)
@@ -339,6 +345,12 @@ def main(_):
 
                 rwalker_weight_ = 0.2
                 rvisit_weight_ = 0.2
+
+            if FLAGS.svm_test_interval is not None and step % FLAGS.svm_test_interval == 0 and step > 0:
+                svm_test_score, _ = model.train_and_eval_svm(c_train_imgs, train_labels_svm, c_test_imgs, test_labels,
+                                                             sess,
+                                                             num_samples=10000)
+                print('svm score:', svm_test_score)
 
             if step % FLAGS.decay_steps == 0 and step > 0:
                 learning_rate_ = learning_rate_ * FLAGS.decay_factor
