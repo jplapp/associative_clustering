@@ -537,7 +537,7 @@ class SemisupModel(object):
     def add_emb_normalization(self, embs, weight, target=1):
         """weight should be a tensor"""
         l2n = tf.norm(embs, axis=1)
-        tf.add_to_collection(LOSSES_COLLECTION, tf.reduce_mean((l2n - target) ** 2) * weight)
+        l1_loss((l2n - target) ** 2, weight)
 
     def create_train_op(self, learning_rate, gradient_multipliers=None):
         """Create and return training operation."""
@@ -650,6 +650,10 @@ class SemisupModel(object):
 
     def train_and_eval_svm(self, train_images, train_labels, test_images,
                            test_labels, sess, num_samples=5000):
+
+        if len(train_labels) < num_samples:
+            print('less labels')
+            num_samples = len(train_labels)
         # train svm
         X = self.calc_embedding(train_images[:num_samples], self.test_emb, sess)
         y = train_labels[:num_samples]
@@ -663,6 +667,27 @@ class SemisupModel(object):
         test_embs = self.calc_embedding(test_images, self.test_emb, sess)
 
         y_t = clf.predict(test_embs)
+        test_accuracy = np.mean(y_t == test_labels)
+
+        return test_accuracy, train_accuracy
+
+    def train_and_eval_svm_on_preds(self, train_preds, train_labels, test_preds,
+                           test_labels, sess, num_samples=5000):
+
+        if len(train_labels) < num_samples:
+            print('less labels')
+            num_samples = len(train_labels)
+        # train svm
+        X = train_preds[:num_samples]
+        y = train_labels[:num_samples]
+
+        clf = svm.SVC()
+        clf.fit(X, y)
+
+        y_train_pred = clf.predict(X)
+        train_accuracy = np.mean(y_train_pred == y)
+
+        y_t = clf.predict(test_preds)
         test_accuracy = np.mean(y_t == test_labels)
 
         return test_accuracy, train_accuracy

@@ -8,6 +8,7 @@ Uses a second association based loss for regularization:
 
 Runs on mnist, cifar10, svhn, stl10 and potentially more datasets
 
+
 usage:
    python3 train_unsup2.py [args]
 
@@ -17,12 +18,13 @@ e.g. 99% on MNIST in 10000 steps:
 
  MNIST with restnet-12: ~98%   (these are the same hps as above)
  python3 train_unsup2.py --architecture resnet_mnist_model --init_with_kmeans --learning_rate 0.001 --reg_warmup_steps 1000 --visit_weight_base 1 --warmup_steps 2000 --emb_size 64  --max_steps 12000 --l1_weight 0 --num_blocks 2
-
+python3 ~/lba_tf/semisup/train_unsup2.py  --architecture=resnet_mnist_model --visit_weight_base=1.0 --max_steps=12000 --unsup_batch_size=100 --learning_rate=0.0005 --warmup_steps=1500 --num_blocks=2 --reg_warmup_steps=1500 --dataset=mnist --init_with_kmeans=True --l1_weight=0 --decay_steps=5000
  or 49% on FRGC:
   python3 train_unsup2.py  --l1_weight 0 --warmup_steps 3000 --reg_warmup_steps 2000 --visit_weight_base 0.05 --learning_rate 0.001 --init_with_kmeans --dataset frgc
 
  33% on cifar
    python3 train_unsup2.py  --l1_weight 0 --warmup_steps 4000 --reg_warmup_steps 3000 --decay_steps 10000 --visit_weight_base 0.5 --learning_rate 0.001 --init_with_kmeans --dataset cifar_inmemory --architecture resnet_cifar_model --emb_size 64
+
 
   STL-10
   python3 train_unsup2.py --dataset stl10 --architecture resnet_stl10_model --learning_rate 0.001 --warmup_steps 1 --init_with_kmeans --reg_warmup_steps 30000 --decay_steps 10000 --max_steps 35000
@@ -64,12 +66,14 @@ flags.DEFINE_integer('num_unlabeled_images', 0, 'How many images to use from the
 
 flags.DEFINE_float('visit_weight_base', 0.5, 'Weight for visit loss.')
 flags.DEFINE_float('rvisit_weight', 1, 'Weight for reg visit loss.')
+flags.DEFINE_float('reg_decay_factor', 0.2, 'Decay reg weight after kmeans initialization')
 flags.DEFINE_float('visit_weight_add', 0, 'Additional weight for visit loss after warmup.')
 
 flags.DEFINE_float('centroid_momentum', 0, 'Centroid momentum to stabilarize centroids.')
 
 flags.DEFINE_float('logit_entropy_weight', 0, 'Weight for 2) logit entropy.')
 flags.DEFINE_float('cluster_hardening_weight', 0, 'Weight for 1) cluster hardening using logits.')
+flags.DEFINE_float('trafo_weight', 0, 'Weight for 4) transformation loss.')
 
 flags.DEFINE_float('beta1', 0.8, 'beta1 parameter for adam')
 flags.DEFINE_float('beta2', 0.9, 'beta2 parameter for adam')
@@ -263,6 +267,13 @@ def main(_):
         entropy = model.add_logit_entropy(t_sup_logit, weight=FLAGS.logit_entropy_weight)
         kl_div = model.add_cluster_hardening_loss(t_sup_logit, weight=FLAGS.cluster_hardening_weight)
 
+        if FLAGS.trafo_weight > 0:
+          t_unsup_logit = model.embedding_to_logit(t_unsup_emb)
+          t_reg_unsup_logit = model.embedding_to_logit(t_reg_unsup_emb)
+
+          trafo_loss = model.add_transformation_loss(t_unsup_emb, t_reg_unsup_emb, t_unsup_logit,
+                                                     t_reg_unsup_logit, FLAGS.unsup_batch_size, weight=FLAGS.trafo_weight, label_smoothing=0)
+
         model.add_emb_regularization(t_all_unsup_emb, weight=t_l1_weight)
         model.add_emb_regularization(t_sup_emb, weight=t_l1_weight)
 
@@ -353,19 +364,25 @@ def main(_):
                 assign_op = t_sup_emb.assign(np.array(init_virt))
                 sess.run(assign_op)
 
-                rwalker_weight_ = 0.2
-                rvisit_weight_ = 0.2
+                rwalker_weight_ *= FLAGS.reg_decay_factor
+                rvisit_weight_ *= FLAGS.reg_decay_factor
 
             if FLAGS.svm_test_interval is not None and step % FLAGS.svm_test_interval == 0 and step > 0:
                 svm_test_score, _ = model.train_and_eval_svm(c_train_imgs, train_labels_svm, c_test_imgs, test_labels,
                                                              sess, num_samples=5000)
                 print('svm score:', svm_test_score)
+                test_pred = model.classify(c_test_imgs, sess)
+                train_pred = model.classify(c_train_imgs, sess)
+                svm_test_score, _ = model.train_and_eval_svm_on_preds(train_pred, train_labels_svm, test_pred, test_labels,
+                                                             sess, num_samples=5000)
+                print('svm score on logits:', svm_test_score)
 
             if step % FLAGS.decay_steps == 0 and step > 0:
                 learning_rate_ = learning_rate_ * FLAGS.decay_factor
 
             if step == 0 or (step + 1) % FLAGS.eval_interval == 0 or step == 99:
                 print('Step: %d' % step)
+                print('Time for step', time.time() - start)
                 test_pred = model.classify(c_test_imgs, sess).argmax(-1)
 
                 nmi = semisup.calc_nmi(test_pred, test_labels)
@@ -404,7 +421,7 @@ def main(_):
                         summary = tf.Summary(
                                 value=[tf.Summary.Value(tag=key, simple_value=value)])
                         summary_writer.add_summary(summary, step)
-            #print(time.time() -start)
+
 
         svm_test_score, _ = model.train_and_eval_svm(c_train_imgs, train_labels_svm, c_test_imgs, test_labels, sess,
                                                      num_samples=10000)
