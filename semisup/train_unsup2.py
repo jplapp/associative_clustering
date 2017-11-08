@@ -71,6 +71,8 @@ flags.DEFINE_float('visit_weight_add', 0, 'Additional weight for visit loss afte
 
 flags.DEFINE_float('centroid_momentum', 0, 'Centroid momentum to stabilarize centroids.')
 
+flags.DEFINE_float('cluster_association_weight', 1, 'Weight for cluster associations.')
+flags.DEFINE_float('reg_association_weight', 1, 'Weight for reg associations.')
 flags.DEFINE_float('logit_entropy_weight', 0, 'Weight for 2) logit entropy.')
 flags.DEFINE_float('cluster_hardening_weight', 0, 'Weight for 1) cluster hardening using logits.')
 flags.DEFINE_float('trafo_weight', 0, 'Weight for 4) transformation loss.')
@@ -114,7 +116,7 @@ flags.DEFINE_bool('shuffle_augmented_samples', False,
                   'samples of its non-augmented samples')
 
 print(FLAGS.learning_rate)
-print("flags:", FLAGS.__flags)  # print all flags (useful when logging)
+print("flags:", str(FLAGS.__flags))  # print all flags (useful when logging)
 
 import numpy as np
 
@@ -336,10 +338,10 @@ def main(_):
                     [train_op, model.train_loss, summary_op, t_sup_emb, t_unsup_emb, t_reg_unsup_emb,
                      model.estimate_error, model.p_ab,
                      model.p_ba, model.p_aba, model.reg_loss_aba], {
-                        rwalker_weight: rwalker_weight_,
-                        rvisit_weight: rvisit_weight_,
-                        walker_weight: walker_weight_,
-                        visit_weight: visit_weight_,
+                        rwalker_weight: rwalker_weight_ * FLAGS.reg_association_weight,
+                        rvisit_weight: rvisit_weight_ * FLAGS.reg_association_weight,
+                        walker_weight: walker_weight_ * FLAGS.cluster_association_weight,
+                        visit_weight: visit_weight_ * FLAGS.cluster_association_weight,
                         t_l1_weight: FLAGS.l1_weight,
                         t_norm_weight: FLAGS.norm_weight,
                         t_logit_weight: logit_weight_,

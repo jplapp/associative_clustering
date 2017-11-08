@@ -13,7 +13,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-
 Definitions and utilities for the svhn model.
 
 This file contains functions that are needed for semisup training and
@@ -119,7 +118,7 @@ def resnet_cifar_model(inputs,
 
 
 from official.resnet.resnet_model import conv2d_fixed_padding, fixed_padding, bottleneck_block,building_block,block_layer,batch_norm_relu
-def mnist_resnet_v2_generator(num_blocks=5, final_pool_size=8, data_format=None):
+def mnist_resnet_v2_generator(num_blocks=5, final_pool_size=8, dropout_keep_prob=1, data_format=None):
   """Generator for MNIST resnet model.
      This is ResNet30 for cifar - with a final avg pooling of size 7 instead of 8, as mnist images are slightly smaller (28px vs 32px)
 
@@ -155,10 +154,15 @@ def mnist_resnet_v2_generator(num_blocks=5, final_pool_size=8, data_format=None)
         inputs=inputs, filters=n_filters, block_fn=building_block, blocks=num_blocks,
         strides=1, is_training=is_training, name='block_layer1',
         data_format=data_format)
+    inputs = slim.dropout(inputs, dropout_keep_prob, scope='dropout')
+
+
     inputs = block_layer(
         inputs=inputs, filters=n_filters*2, block_fn=building_block, blocks=num_blocks,
         strides=2, is_training=is_training, name='block_layer2',
         data_format=data_format)
+    inputs = slim.dropout(inputs, dropout_keep_prob, scope='dropout')
+
     inputs = block_layer(
         inputs=inputs, filters=n_filters*4, block_fn=building_block, blocks=num_blocks,
         strides=2, is_training=is_training, name='block_layer3',
@@ -307,6 +311,43 @@ def resnet_mnist_model(inputs,
     net = network(net, is_training)
     net = tf.contrib.slim.flatten(net)
     net = slim.dropout(net, dropout_keep_prob, scope='dropout')
+    net = tf.layers.dense(inputs=net, units=emb_size)
+
+    net = tf.identity(net, 'embeddings')
+    return net
+
+def resnet_mnist_model_d(inputs,
+                       is_training=True,
+                       emb_size=128,
+                       l2_weight=1e-4,
+                       img_shape=None,
+                       new_shape=None,
+                       image_summary=False,
+                       augmentation_function=None,
+                       num_blocks=None,
+                       dropout_keep_prob=1,
+                       batch_norm_decay=0.99,
+                       resnet_size=32):
+
+    inputs = tf.cast(inputs, tf.float32)
+    if new_shape is not None:
+        shape = new_shape
+        inputs = tf.image.resize_images(
+            inputs,
+            tf.constant(new_shape[:2]),
+            method=tf.image.ResizeMethod.BILINEAR)
+    else:
+        shape = img_shape
+
+    if is_training and augmentation_function is not None:
+        inputs = augmentation_function(inputs, shape)
+    if image_summary:
+        tf.summary.image('Inputs', inputs, max_outputs=3)
+
+    net = inputs
+    network = mnist_resnet_v2_generator(num_blocks, final_pool_size=7, dropout_keep_prob=dropout_keep_prob)
+    net = network(net, is_training)
+    net = tf.contrib.slim.flatten(net)
     net = tf.layers.dense(inputs=net, units=emb_size)
 
     net = tf.identity(net, 'embeddings')
