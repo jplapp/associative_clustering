@@ -721,7 +721,7 @@ class SemisupModel(object):
                 loss_collection=None,  # this is not the final loss yet
                 )
 
-        t_target = tf.ones([batch_size ** 2], dtype=tf.float64) - t_xentropy
+        t_target = tf.ones([batch_size ** 2]) - tf.cast(t_xentropy, dtype=tf.float32)
 
         self.t_transf_loss = tf.reduce_mean(tf.abs(t_target - t_emb_sim)) * weight
         tf.add_to_collection(LOSSES_COLLECTION, self.t_transf_loss)
