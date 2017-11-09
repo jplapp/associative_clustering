@@ -30,6 +30,13 @@ python3 ~/lba_tf/semisup/train_unsup2.py  --architecture=resnet_mnist_model --vi
   python3 train_unsup2.py --dataset stl10 --architecture resnet_stl10_model --learning_rate 0.001 --warmup_steps 1 --init_with_kmeans --reg_warmup_steps 30000 --decay_steps 10000 --max_steps 35000
 
   python3 /efs/lba_tf/semisup/train_unsup2.py --dataset stl10 --architecture resnet_stl10_model --learning_rate 0.001 --warmup_steps 2000 --init_with_kmeans --reg_warmup_steps 30000 --decay_steps 10000 --max_steps 35000
+
+  # only classification (only augmentation): best SVM scores 53% (resnet) 51% (broxnet)
+     -> python3 train_unsup2.py  --l1_weight 0 --warmup_steps 4000 --reg_warmup_steps 300000 --decay_steps 30000 --num_augmented_samples 10 --unsup_batch_size 30 --learning_rate 0.00
+1 --init_with_kmeans --dataset cifar_inmemory --architecture resnet_cifar_model --emb_size 128 --norm_weight 0.00001 --svm_test_interval 2000
+
+     ->python3 train_unsup2.py  --l1_weight 0 --warmup_steps 2000 --reg_warmup_steps 300000 --decay_steps 20000 --unsup_batch_size 30 --num_augmented_samples 10 --norm_weight 0.0000
+1 --learning_rate 0.001 --init_with_kmeans --dataset cifar_inmemory --architecture stl10_ex_cnn --emb_size 128 --svm_test_interval 2000
 """
 
 from __future__ import absolute_import
@@ -71,8 +78,8 @@ flags.DEFINE_float('visit_weight_add', 0, 'Additional weight for visit loss afte
 
 flags.DEFINE_float('centroid_momentum', 0, 'Centroid momentum to stabilarize centroids.')
 
-flags.DEFINE_float('cluster_association_weight', 1, 'Weight for cluster associations.')
-flags.DEFINE_float('reg_association_weight', 1, 'Weight for reg associations.')
+flags.DEFINE_float('cluster_association_weight', 1.0, 'Weight for cluster associations.')
+flags.DEFINE_float('reg_association_weight', 1.0, 'Weight for reg associations.')
 flags.DEFINE_float('logit_entropy_weight', 0, 'Weight for 2) logit entropy.')
 flags.DEFINE_float('cluster_hardening_weight', 0, 'Weight for 1) cluster hardening using logits.')
 flags.DEFINE_float('trafo_weight', 0, 'Weight for 4) transformation loss.')
@@ -229,6 +236,7 @@ def main(_):
         visit_weight = tf.placeholder("float", shape=[])
         walker_weight = tf.placeholder("float", shape=[])
         t_logit_weight = tf.placeholder("float", shape=[])
+        t_trafo_weight = tf.placeholder("float", shape=[])
 
         t_l1_weight = tf.placeholder("float", shape=[])
         t_norm_weight = tf.placeholder("float", shape=[])
@@ -274,7 +282,7 @@ def main(_):
           t_reg_unsup_logit = model.embedding_to_logit(t_reg_unsup_emb)
 
           trafo_loss = model.add_transformation_loss(t_unsup_emb, t_reg_unsup_emb, t_unsup_logit,
-                                                     t_reg_unsup_logit, FLAGS.unsup_batch_size, weight=FLAGS.trafo_weight, label_smoothing=0)
+                                                     t_reg_unsup_logit, FLAGS.unsup_batch_size, weight=t_trafo_weight, label_smoothing=0)
 
         model.add_emb_regularization(t_all_unsup_emb, weight=t_l1_weight)
         model.add_emb_regularization(t_sup_emb, weight=t_l1_weight)
@@ -316,6 +324,7 @@ def main(_):
         rwalker_weight_ = FLAGS.rwalker_weight
         rvisit_weight_ = FLAGS.rvisit_weight
         learning_rate_ = FLAGS.learning_rate
+        trafo_weight = FLAGS.trafo_weight
 
         for step in range(FLAGS.max_steps):
             import time
@@ -325,10 +334,12 @@ def main(_):
                     walker_weight_ = 0
                     visit_weight_ = 0
                     logit_weight_ = 0
+                    trafo_weight = 0
                 else:
                     walker_weight_ = FLAGS.walker_weight
                     visit_weight_ = FLAGS.visit_weight_base
                     logit_weight_ = FLAGS.logit_weight
+                    trafo_weight = FLAGS.trafo_weight
             else:
                 walker_weight_ = apply_envelope("log", step, FLAGS.walker_weight, reg_warmup_steps, 0)
                 visit_weight_ = apply_envelope("log", step, FLAGS.visit_weight_base, reg_warmup_steps, 0)
@@ -345,6 +356,7 @@ def main(_):
                         t_l1_weight: FLAGS.l1_weight,
                         t_norm_weight: FLAGS.norm_weight,
                         t_logit_weight: logit_weight_,
+                        t_trafo_weight: trafo_weight,
                         t_learning_rate: 1e-6 + apply_envelope("log", step, learning_rate_, FLAGS.warmup_steps, 0)
                         })
 

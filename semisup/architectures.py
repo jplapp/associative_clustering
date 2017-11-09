@@ -154,14 +154,16 @@ def mnist_resnet_v2_generator(num_blocks=5, final_pool_size=8, dropout_keep_prob
         inputs=inputs, filters=n_filters, block_fn=building_block, blocks=num_blocks,
         strides=1, is_training=is_training, name='block_layer1',
         data_format=data_format)
-    inputs = slim.dropout(inputs, dropout_keep_prob, scope='dropout')
+    if dropout_keep_prob < 1:
+        inputs = slim.dropout(inputs, dropout_keep_prob, scope='dropout')
 
 
     inputs = block_layer(
         inputs=inputs, filters=n_filters*2, block_fn=building_block, blocks=num_blocks,
         strides=2, is_training=is_training, name='block_layer2',
         data_format=data_format)
-    inputs = slim.dropout(inputs, dropout_keep_prob, scope='dropout')
+    if dropout_keep_prob < 1:
+        inputs = slim.dropout(inputs, dropout_keep_prob, scope='dropout')
 
     inputs = block_layer(
         inputs=inputs, filters=n_filters*4, block_fn=building_block, blocks=num_blocks,
