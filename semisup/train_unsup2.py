@@ -43,6 +43,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import random
+
 import tensorflow as tf
 
 tf.logging.set_verbosity(tf.logging.ERROR)
@@ -101,6 +103,7 @@ flags.DEFINE_integer('num_blocks', 3, 'Number of blocks in resnet')
 flags.DEFINE_integer('num_augmented_samples', 3, 'Number of augmented samples for each image.')
 flags.DEFINE_float('scale_match_ab', 1,
                    'How to scale match ab to prevent numeric instability. Use when using embedding normalization')
+flags.DEFINE_float('norm_target', 3, 'Target of embedding normalization')
 
 flags.DEFINE_string('optimizer', 'adam', 'Optimizer. Can be [adam, sgd, rms]')
 
@@ -118,6 +121,7 @@ flags.DEFINE_string('restore_checkpoint', None, 'restore weights from checkpoint
 flags.DEFINE_bool('init_with_kmeans', False, 'Initialize centroids using kmeans after reg_warmup_steps steps.')
 flags.DEFINE_bool('normalize_embeddings', False, 'Normalize embeddings (l2 norm = 1)')
 flags.DEFINE_bool('volta', False, 'Use more CPU for preprocessing to load GPU')
+flags.DEFINE_bool('use_test', False, 'Use Test images as part of training set. Done by a few clustering algorithms')
 flags.DEFINE_bool('shuffle_augmented_samples', False,
                   'If true, the augmented samples are shuffled separately. Otherwise, a batch contains augmentated '
                   'samples of its non-augmented samples')
@@ -136,6 +140,8 @@ from augment import apply_augmentation
 
 
 def main(_):
+    if FLAGS.logdir is not None:
+        FLAGS.logdir = FLAGS.logdir + str(random.randint(0,99999))
     dataset_tools = import_module('tools.' + FLAGS.dataset)
 
     NUM_LABELS = dataset_tools.NUM_LABELS
@@ -154,8 +160,10 @@ def main(_):
         train_images = (train_images - 128.) / 128.
         test_images = (test_images - 128.) / 128.
 
-    if FLAGS.dataset == 'mnist' and FLAGS.architecture == 'resnet_mnist_model':
-      FLAGS.emb_size = 64
+    if FLAGS.use_test:
+        train_images = np.vstack([train_images, test_images])
+        train_labels_svm = np.hstack([train_labels_svm, test_labels])
+
     #if FLAGS.dataset == 'svhn' and FLAGS.architecture == 'resnet_cifar_model':
     #  FLAGS.emb_size = 64
 
@@ -270,7 +278,7 @@ def main(_):
                     match_scale=FLAGS.scale_match_ab, est_err=True)
             model.reg_loss_aba = model.add_semisup_loss(
                     t_reg_unsup_emb, t_unsup_emb, t_rsup_labels,
-                    walker_weight=rwalker_weight, visit_weight=rvisit_weight, match_scale=1, est_err=False)
+                    walker_weight=rwalker_weight, visit_weight=rvisit_weight, match_scale=FLAGS.scale_match_ab, est_err=False)
 
         model.add_logit_loss(t_sup_logit, t_sup_labels, weight=t_logit_weight)
 
@@ -281,15 +289,17 @@ def main(_):
           t_unsup_logit = model.embedding_to_logit(t_unsup_emb)
           t_reg_unsup_logit = model.embedding_to_logit(t_reg_unsup_emb)
 
-          trafo_loss = model.add_transformation_loss(t_unsup_emb, t_reg_unsup_emb, t_unsup_logit,
+          t_trafo_loss = model.add_transformation_loss(t_unsup_emb, t_reg_unsup_emb, t_unsup_logit,
                                                      t_reg_unsup_logit, FLAGS.unsup_batch_size, weight=t_trafo_weight, label_smoothing=0)
+        else:
+          t_trafo_loss = tf.constant(0)
 
         model.add_emb_regularization(t_all_unsup_emb, weight=t_l1_weight)
         model.add_emb_regularization(t_sup_emb, weight=t_l1_weight)
 
         # make l2 norm = 3
-        model.add_emb_normalization(t_sup_emb, weight=t_norm_weight, target=3)
-        model.add_emb_normalization(t_all_unsup_emb, weight=t_norm_weight, target=3)
+        model.add_emb_normalization(t_sup_emb, weight=t_norm_weight, target=FLAGS.norm_target)
+        model.add_emb_normalization(t_all_unsup_emb, weight=t_norm_weight, target=FLAGS.norm_target)
 
         gradient_multipliers = {t_sup_emb: 1 - FLAGS.centroid_momentum}
         train_op = model.create_train_op(t_learning_rate, gradient_multipliers=gradient_multipliers)
@@ -345,10 +355,10 @@ def main(_):
                 visit_weight_ = apply_envelope("log", step, FLAGS.visit_weight_base, reg_warmup_steps, 0)
 
             _, train_loss, summaries, centroids, unsup_emb, reg_unsup_emb, estimated_error, p_ab, p_ba, p_aba, \
-            reg_loss = sess.run(
+            reg_loss, trafo_loss = sess.run(
                     [train_op, model.train_loss, summary_op, t_sup_emb, t_unsup_emb, t_reg_unsup_emb,
                      model.estimate_error, model.p_ab,
-                     model.p_ba, model.p_aba, model.reg_loss_aba], {
+                     model.p_ba, model.p_aba, model.reg_loss_aba, t_trafo_loss], {
                         rwalker_weight: rwalker_weight_ * FLAGS.reg_association_weight,
                         rvisit_weight: rvisit_weight_ * FLAGS.reg_association_weight,
                         walker_weight: walker_weight_ * FLAGS.cluster_association_weight,
@@ -362,7 +372,7 @@ def main(_):
 
             if FLAGS.init_with_kmeans and step == reg_warmup_steps:
                 # do kmeans, initialize with kmeans
-                embs = model.calc_embedding(c_test_imgs, model.test_emb, sess)
+                embs = model.calc_embedding(c_train_imgs, model.test_emb, sess)
 
                 kmeans = semisup.KMeans(n_clusters=num_labels, random_state=0).fit(embs)
 
@@ -396,6 +406,7 @@ def main(_):
 
             if step == 0 or (step + 1) % FLAGS.eval_interval == 0 or step == 99:
                 print('Step: %d' % step)
+                print('trafo loss', trafo_loss)
                 print('Time for step', time.time() - start)
                 test_pred = model.classify(c_test_imgs, sess).argmax(-1)
 

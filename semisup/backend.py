@@ -43,6 +43,19 @@ def show_sample_img_inline(imgs):
     plt.show()
 
 
+def show_samples(imgs, image_shape, scale=128., figsize=(8, 16)):
+    import matplotlib.pyplot as plt
+    fig, axes = plt.subplots(nrows=imgs.shape[0], ncols=imgs.shape[1], sharex=True, sharey=True, figsize=figsize)
+    for i in range(imgs.shape[0]):
+        row = axes[i]
+        for image, ax in zip(imgs[i], row):
+            ax.imshow(np.array(image.reshape(image_shape) * scale + scale, np.uint8))
+            ax.get_xaxis().set_visible(False)
+            ax.get_yaxis().set_visible(False)
+
+    fig.tight_layout(pad=0.1)
+
+
 def create_input(input_images, input_labels, batch_size, shuffle=False):
     """Create preloaded data batch inputs.
 
@@ -261,7 +274,7 @@ class SemisupModel(object):
     def __init__(self, model_func, num_labels, input_shape, test_in=None,
                  optimizer='adam', beta1=0.9, beta2=0.999, num_blocks=None,
                  emb_size=128, dropout_keep_prob=1, augmentation_function=None,
-                 normalize_embeddings=False):
+                 normalize_embeddings=False, resize_shape=None):
         """Initialize SemisupModel class.
 
         Creates an evaluation graph for the provided model_func.
@@ -292,13 +305,19 @@ class SemisupModel(object):
         self.num_blocks = num_blocks
         self.dropout_keep_prob = dropout_keep_prob
 
+        test_in = None
         if test_in is not None:
             self.test_in = test_in
+        elif resize_shape is not None:
+            self.test_in = tf.placeholder(np.float32, [None,None,None,input_shape[2]],
+                                          'test_in')
+            test_in = tf.image.resize_images(self.test_in, input_shape[0:2])
         else:
             self.test_in = tf.placeholder(np.float32, [None] + input_shape,
                                           'test_in')
+            test_in = self.test_in
 
-        self.test_emb = self.image_to_embedding(self.test_in, is_training=False)
+        self.test_emb = self.image_to_embedding(test_in, is_training=False)
         if normalize_embeddings:
             self.test_emb = tf.nn.l2_normalize(self.test_emb, dim=1)
         self.test_logit = self.embedding_to_logit(self.test_emb,
@@ -729,6 +748,7 @@ class SemisupModel(object):
         tf.summary.scalar('Loss_Transf', self.t_transf_loss)
 
         return self.t_transf_loss
+
 
 
 def do_kmeans(embs, lbls, num_labels):

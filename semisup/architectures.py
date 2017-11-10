@@ -110,6 +110,7 @@ def resnet_cifar_model(inputs,
     pre_emb = _find_tensor('final_avg_pool', logits.graph)
     emb = tf.contrib.slim.flatten(pre_emb)
 
+    emb = slim.dropout(emb, dropout_keep_prob, scope='dropout')
     emb = tf.layers.dense(inputs=emb, units=emb_size)
 
     emb = tf.identity(emb, 'embeddings')
@@ -172,7 +173,7 @@ def mnist_resnet_v2_generator(num_blocks=5, final_pool_size=8, dropout_keep_prob
 
     inputs = batch_norm_relu(inputs, is_training, data_format)
     inputs = tf.layers.average_pooling2d(
-        inputs=inputs, pool_size=final_pool_size, strides=1, padding='VALID',
+        inputs=inputs, pool_size=int(final_pool_size), strides=1, padding='VALID',
         data_format=data_format)
     inputs = tf.identity(inputs, 'final_avg_pool')
 
@@ -180,7 +181,7 @@ def mnist_resnet_v2_generator(num_blocks=5, final_pool_size=8, dropout_keep_prob
 
   return model
 
-def stl10_resnet_v2_generator(data_format=None):
+def stl10_resnet_v2_generator(num_blocks=2, data_format=None):
   """Generator for STL-10 ResNet v2 models.
   adapted according to https://128.84.21.199/pdf/1707.07103.pdf
 
@@ -193,8 +194,6 @@ def stl10_resnet_v2_generator(data_format=None):
   Raises:
     ValueError: If `resnet_size` is invalid.
   """
-  num_blocks = 2
-
   if data_format is None:
     data_format = (
         'channels_first' if tf.test.is_built_with_cuda() else 'channels_last')
@@ -208,7 +207,7 @@ def stl10_resnet_v2_generator(data_format=None):
       inputs = tf.transpose(inputs, [0, 3, 1, 2])
 
     inputs = conv2d_fixed_padding(
-        inputs=inputs, filters=16, kernel_size=5, strides=1,
+        inputs=inputs, filters=32, kernel_size=3, strides=1,
         data_format=data_format)
     inputs = tf.identity(inputs, 'initial_conv')
     inputs = tf.layers.max_pooling2d(
@@ -251,7 +250,7 @@ def resnet_stl10_model(inputs,
                        new_shape=None,
                        image_summary=False,
                        augmentation_function=None,
-                       num_blocks=None,
+                       num_blocks=2,
                        dropout_keep_prob=1,
                        batch_norm_decay=0.99,
                        resnet_size=32):
@@ -272,9 +271,10 @@ def resnet_stl10_model(inputs,
         tf.summary.image('Inputs', inputs, max_outputs=3)
 
     net = inputs
-    network = stl10_resnet_v2_generator()
+    network = stl10_resnet_v2_generator(num_blocks=num_blocks)
     net = network(net, is_training)
     net = tf.contrib.slim.flatten(net)
+    net = slim.dropout(net, dropout_keep_prob, scope='dropout')
     emb = tf.layers.dense(inputs=net, units=emb_size)
 
     emb = tf.identity(emb, 'embeddings')
@@ -288,7 +288,7 @@ def resnet_mnist_model(inputs,
                        new_shape=None,
                        image_summary=False,
                        augmentation_function=None,
-                       num_blocks=None,
+                       num_blocks=2,
                        dropout_keep_prob=1,
                        batch_norm_decay=0.99,
                        resnet_size=32):
@@ -309,7 +309,7 @@ def resnet_mnist_model(inputs,
         tf.summary.image('Inputs', inputs, max_outputs=3)
 
     net = inputs
-    network = mnist_resnet_v2_generator(num_blocks, final_pool_size=7)
+    network = mnist_resnet_v2_generator(num_blocks, final_pool_size=inputs.shape[1]//4)
     net = network(net, is_training)
     net = tf.contrib.slim.flatten(net)
     net = slim.dropout(net, dropout_keep_prob, scope='dropout')
