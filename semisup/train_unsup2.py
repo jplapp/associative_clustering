@@ -99,6 +99,7 @@ flags.DEFINE_bool('normalize_input', True, 'Normalize input images to be between
 
 flags.DEFINE_integer('max_steps', 200000, 'Number of training steps.')
 flags.DEFINE_integer('emb_size', 128, 'Dimension of embedding space')
+flags.DEFINE_integer('taskid', None, 'Id of current task. Will be added to logdir')
 flags.DEFINE_integer('num_blocks', 3, 'Number of blocks in resnet')
 flags.DEFINE_integer('num_augmented_samples', 3, 'Number of augmented samples for each image.')
 flags.DEFINE_float('scale_match_ab', 1,
@@ -141,7 +142,11 @@ from augment import apply_augmentation
 
 def main(_):
     if FLAGS.logdir is not None:
-        FLAGS.logdir = FLAGS.logdir + str(random.randint(0,99999))
+        if FLAGS.taskid is not None:
+            FLAGS.logdir = FLAGS.logdir + '/t_' + str(FLAGS.taskid)
+        else:
+            FLAGS.logdir = FLAGS.logdir + '/t_' + str(random.randint(0,99999))
+
     dataset_tools = import_module('tools.' + FLAGS.dataset)
 
     NUM_LABELS = dataset_tools.NUM_LABELS
@@ -275,10 +280,10 @@ def main(_):
             model.add_semisup_loss(
                     t_sup_emb, t_unsup_emb, t_sup_labels,
                     walker_weight=walker_weight, visit_weight=visit_weight,
-                    match_scale=FLAGS.scale_match_ab, est_err=True)
+                    match_scale=FLAGS.scale_match_ab, est_err=True, name='c_association')
             model.reg_loss_aba = model.add_semisup_loss(
                     t_reg_unsup_emb, t_unsup_emb, t_rsup_labels,
-                    walker_weight=rwalker_weight, visit_weight=rvisit_weight, match_scale=FLAGS.scale_match_ab, est_err=False)
+                    walker_weight=rwalker_weight, visit_weight=rvisit_weight, match_scale=FLAGS.scale_match_ab, est_err=False, name='aug_association')
 
         model.add_logit_loss(t_sup_logit, t_sup_labels, weight=t_logit_weight)
 
@@ -446,6 +451,12 @@ def main(_):
                         summary = tf.Summary(
                                 value=[tf.Summary.Value(tag=key, simple_value=value)])
                         summary_writer.add_summary(summary, step)
+
+                # early stopping to save some time
+                if step == 34999 and score < 0.45:
+                  break
+                if step == 14999 and score < 0.225:
+                  break
 
 
         svm_test_score, _ = model.train_and_eval_svm(c_train_imgs, train_labels_svm, c_test_imgs, test_labels, sess,

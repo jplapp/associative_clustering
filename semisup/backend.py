@@ -358,7 +358,7 @@ class SemisupModel(object):
                     scope='logit_fc')
 
     def add_semisup_loss(self, a, b, labels, walker_weight=1.0,
-                         visit_weight=1.0, match_scale=1.0, est_err=True):
+                         visit_weight=1.0, match_scale=1.0, est_err=True, name=''):
         """Add semi-supervised classification loss to the model.
 
         The loss consists of two terms: "walker" and "visit".
@@ -396,9 +396,9 @@ class SemisupModel(object):
                 scope='loss_aba')
         self.loss_aba = loss_aba
 
-        self.add_visit_loss(p_ab, visit_weight, 'b')
+        self.add_visit_loss(p_ab, visit_weight, name)
 
-        tf.summary.scalar('Loss_aba', loss_aba)
+        tf.summary.scalar('Loss_aba'+name, loss_aba)
 
         return loss_aba
 
