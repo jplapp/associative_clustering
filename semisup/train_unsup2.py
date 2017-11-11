@@ -291,10 +291,13 @@ def main(_):
         kl_div = model.add_cluster_hardening_loss(t_sup_logit, weight=FLAGS.cluster_hardening_weight)
 
         if FLAGS.trafo_weight > 0:
-          t_unsup_logit = model.embedding_to_logit(t_unsup_emb)
-          t_reg_unsup_logit = model.embedding_to_logit(t_reg_unsup_emb)
+          # only use a single augmented sample per sample
+          t_reg_unsup_emb_singled = t_reg_unsup_emb[::FLAGS.num_augmented_samples]
 
-          t_trafo_loss = model.add_transformation_loss(t_unsup_emb, t_reg_unsup_emb, t_unsup_logit,
+          t_unsup_logit = model.embedding_to_logit(t_unsup_emb)
+          t_reg_unsup_logit = model.embedding_to_logit(t_reg_unsup_emb_singled)
+
+          t_trafo_loss = model.add_transformation_loss(t_unsup_emb, t_reg_unsup_emb_singled, t_unsup_logit,
                                                      t_reg_unsup_logit, FLAGS.unsup_batch_size, weight=t_trafo_weight, label_smoothing=0)
         else:
           t_trafo_loss = tf.constant(0)
