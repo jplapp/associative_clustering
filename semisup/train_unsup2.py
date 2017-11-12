@@ -85,6 +85,7 @@ flags.DEFINE_float('reg_association_weight', 1.0, 'Weight for reg associations.'
 flags.DEFINE_float('logit_entropy_weight', 0, 'Weight for 2) logit entropy.')
 flags.DEFINE_float('cluster_hardening_weight', 0, 'Weight for 1) cluster hardening using logits.')
 flags.DEFINE_float('trafo_weight', 0, 'Weight for 4) transformation loss.')
+flags.DEFINE_float('trafo_cen_weight', 0, 'Weight for 4) transformation loss on centroids')
 
 flags.DEFINE_float('beta1', 0.8, 'beta1 parameter for adam')
 flags.DEFINE_float('beta2', 0.9, 'beta2 parameter for adam')
@@ -123,6 +124,7 @@ flags.DEFINE_bool('init_with_kmeans', False, 'Initialize centroids using kmeans 
 flags.DEFINE_bool('normalize_embeddings', False, 'Normalize embeddings (l2 norm = 1)')
 flags.DEFINE_bool('volta', False, 'Use more CPU for preprocessing to load GPU')
 flags.DEFINE_bool('use_test', False, 'Use Test images as part of training set. Done by a few clustering algorithms')
+flags.DEFINE_bool('trafo_separate_loss_collection', False, 'Do ignore gradients for transformation loss on last fc layer')
 flags.DEFINE_bool('shuffle_augmented_samples', False,
                   'If true, the augmented samples are shuffled separately. Otherwise, a batch contains augmentated '
                   'samples of its non-augmented samples')
@@ -250,10 +252,12 @@ def main(_):
         walker_weight = tf.placeholder("float", shape=[])
         t_logit_weight = tf.placeholder("float", shape=[])
         t_trafo_weight = tf.placeholder("float", shape=[])
+        t_trafo_cen_weight = tf.placeholder("float", shape=[])
 
         t_l1_weight = tf.placeholder("float", shape=[])
         t_norm_weight = tf.placeholder("float", shape=[])
         t_learning_rate = tf.placeholder("float", shape=[])
+        t_sat_loss_weight = tf.placeholder("float", shape=[])
 
         t_unsup_emb = model.image_to_embedding(t_unsup_images)
         t_reg_unsup_emb = model.image_to_embedding(t_reg_unsup_images)
@@ -287,20 +291,33 @@ def main(_):
 
         model.add_logit_loss(t_sup_logit, t_sup_labels, weight=t_logit_weight)
 
+        t_reg_unsup_emb_singled = t_reg_unsup_emb[::FLAGS.num_augmented_samples]
+
+        t_unsup_logit = model.embedding_to_logit(t_unsup_emb)
+        t_reg_unsup_logit = model.embedding_to_logit(t_reg_unsup_emb_singled)
+
+        model.add_sat_loss(t_unsup_logit, t_reg_unsup_logit, weight=t_sat_loss_weight)
+
         entropy = model.add_logit_entropy(t_sup_logit, weight=FLAGS.logit_entropy_weight)
         kl_div = model.add_cluster_hardening_loss(t_sup_logit, weight=FLAGS.cluster_hardening_weight)
 
+        trafo_lc = semisup.NO_FC_COLLECTION if FLAGS.trafo_separate_loss_collection else semisup.LOSSES_COLLECTION
+
         if FLAGS.trafo_weight > 0:
           # only use a single augmented sample per sample
-          t_reg_unsup_emb_singled = t_reg_unsup_emb[::FLAGS.num_augmented_samples]
-
-          t_unsup_logit = model.embedding_to_logit(t_unsup_emb)
-          t_reg_unsup_logit = model.embedding_to_logit(t_reg_unsup_emb_singled)
 
           t_trafo_loss = model.add_transformation_loss(t_unsup_emb, t_reg_unsup_emb_singled, t_unsup_logit,
-                                                     t_reg_unsup_logit, FLAGS.unsup_batch_size, weight=t_trafo_weight, label_smoothing=0)
+                                                     t_reg_unsup_logit, FLAGS.unsup_batch_size, weight=t_trafo_weight, label_smoothing=0, loss_collection=trafo_lc)
         else:
           t_trafo_loss = tf.constant(0)
+
+
+        if FLAGS.trafo_cen_weight > 0:
+          t_trafo_cen_loss = model.add_transformation_loss_sparse(t_sup_emb, t_unsup_emb, t_sup_logit,
+                                                     t_unsup_logit, num_labels * FLAGS.virtual_embeddings_per_class,
+                                                     FLAGS.unsup_batch_size, weight=t_trafo_cen_weight, label_smoothing=0, loss_collection=trafo_lc)
+        else:
+          t_trafo_cen_loss = tf.constant(0)
 
         model.add_emb_regularization(t_all_unsup_emb, weight=t_l1_weight)
         model.add_emb_regularization(t_sup_emb, weight=t_l1_weight)
@@ -310,7 +327,7 @@ def main(_):
         model.add_emb_normalization(t_all_unsup_emb, weight=t_norm_weight, target=FLAGS.norm_target)
 
         gradient_multipliers = {t_sup_emb: 1 - FLAGS.centroid_momentum}
-        train_op = model.create_train_op(t_learning_rate, gradient_multipliers=gradient_multipliers)
+        [train_op, train_op_sat] = model.create_train_op(t_learning_rate, gradient_multipliers=gradient_multipliers)
 
         summary_op = tf.summary.merge_all()
         if FLAGS.logdir is not None:
@@ -343,6 +360,7 @@ def main(_):
         rvisit_weight_ = FLAGS.rvisit_weight
         learning_rate_ = FLAGS.learning_rate
         trafo_weight = FLAGS.trafo_weight
+        trafo_cen_weight = FLAGS.trafo_cen_weight
 
         for step in range(FLAGS.max_steps):
             import time
@@ -353,18 +371,20 @@ def main(_):
                     visit_weight_ = 0
                     logit_weight_ = 0
                     trafo_weight = 0
+                    trafo_cen_weight = 0
                 else:
                     walker_weight_ = FLAGS.walker_weight
                     visit_weight_ = FLAGS.visit_weight_base
                     logit_weight_ = FLAGS.logit_weight
                     trafo_weight = FLAGS.trafo_weight
+                    trafo_cen_weight = FLAGS.trafo_cen_weight
             else:
                 walker_weight_ = apply_envelope("log", step, FLAGS.walker_weight, reg_warmup_steps, 0)
                 visit_weight_ = apply_envelope("log", step, FLAGS.visit_weight_base, reg_warmup_steps, 0)
 
-            _, train_loss, summaries, centroids, unsup_emb, reg_unsup_emb, estimated_error, p_ab, p_ba, p_aba, \
+            _, sat_loss, train_loss, summaries, centroids, unsup_emb, reg_unsup_emb, estimated_error, p_ab, p_ba, p_aba, \
             reg_loss, trafo_loss = sess.run(
-                    [train_op, model.train_loss, summary_op, t_sup_emb, t_unsup_emb, t_reg_unsup_emb,
+                    [train_op, train_op_sat, model.train_loss, summary_op, t_sup_emb, t_unsup_emb, t_reg_unsup_emb,
                      model.estimate_error, model.p_ab,
                      model.p_ba, model.p_aba, model.reg_loss_aba, t_trafo_loss], {
                         rwalker_weight: rwalker_weight_ * FLAGS.reg_association_weight,
@@ -375,6 +395,8 @@ def main(_):
                         t_norm_weight: FLAGS.norm_weight,
                         t_logit_weight: logit_weight_,
                         t_trafo_weight: trafo_weight,
+                        t_trafo_cen_weight: trafo_cen_weight,
+                        t_sat_loss_weight: 0,
                         t_learning_rate: 1e-6 + apply_envelope("log", step, learning_rate_, FLAGS.warmup_steps, 0)
                         })
 
@@ -415,6 +437,7 @@ def main(_):
             if step == 0 or (step + 1) % FLAGS.eval_interval == 0 or step == 99:
                 print('Step: %d' % step)
                 print('trafo loss', trafo_loss)
+                print('reg loss' , reg_loss)
                 print('Time for step', time.time() - start)
                 test_pred = model.classify(c_test_imgs, sess).argmax(-1)
 
@@ -427,6 +450,9 @@ def main(_):
                 print('Train loss: %.2f ' % train_loss)
                 print('Reg loss aba: %.2f ' % reg_loss)
                 print('Estimated Accuracy: %.2f ' % estimated_error)
+
+                sat_score = semisup.calc_sat_score(unsup_emb, reg_unsup_emb)
+                print('sat accuracy', sat_score)
 
                 embs = model.calc_embedding(c_test_imgs, model.test_emb, sess)
 

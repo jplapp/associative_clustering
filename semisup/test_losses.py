@@ -31,26 +31,27 @@ class LossesTest(tf.test.TestCase):
             logit = logit_embs[c] + np.random.uniform(-noise_factor, noise_factor, num_classes)
             logits.append(logit)
 
-        embeddings = np.array(embeddings, dtype=np.float64)
-        logits = np.array(logits, dtype=np.float64)
+        embeddings = np.array(embeddings, dtype=np.float32)
+        logits = np.array(logits, dtype=np.float32)
 
-        t_embs = tf.Variable(embeddings, dtype=np.float64)
-        t_logits = tf.Variable(logits, dtype=np.float64)
+        t_embs = tf.Variable(embeddings, dtype=np.float32)
+        t_logits = tf.Variable(logits, dtype=np.float32)
 
-        t_embs_bad = tf.random_normal((batch_size, emb_size), dtype=np.float64)
-        t_logits_bad = tf.random_normal((batch_size, num_classes), dtype=np.float64)
+        t_embs_bad = tf.random_normal((batch_size, emb_size), dtype=np.float32)
+        t_logits_bad = tf.random_normal((batch_size, num_classes), dtype=np.float32)
 
+#        print(t_embs_bad.shape, t_logits_bad.shape, batch_size)
         model = self.mockModel()
 
-        t_loss_good = model.add_transformation_loss(t_embs, t_embs,
+        t_loss_good = model.add_transformation_loss_sparse(t_embs, t_embs,
                                                     t_logits,
-                                                    t_logits, batch_size)
-        t_loss_bad_1 = model.add_transformation_loss(t_embs, t_embs_bad,
+                                                    t_logits, batch_size, batch_size)
+        t_loss_bad_1 = model.add_transformation_loss_sparse(t_embs, t_embs_bad,
                                                      t_logits,
-                                                     t_logits, batch_size)
-        t_loss_bad_2 = model.add_transformation_loss(t_embs, t_embs,
+                                                     t_logits, batch_size, batch_size)
+        t_loss_bad_2 = model.add_transformation_loss_sparse(t_embs, t_embs_bad,
                                                      t_logits,
-                                                     t_logits_bad, batch_size)
+                                                     t_logits_bad, batch_size, batch_size)
         return [t_loss_good, t_loss_bad_1, t_loss_bad_2, t_embs]
 
     def testTransformationLoss(self):
@@ -91,6 +92,33 @@ class LossesTest(tf.test.TestCase):
             clean_res = sess.run(loss, {input: np.ones((10,10))*-10+np.identity(10, np.float64)*10})
             normal_res = sess.run(loss, {input: np.random.normal(size=[10, 10])})
             unif_res = sess.run(loss, {input: np.random.uniform(-1, 1, size=[10,10])})
+
+            self.assertAlmostEqual(clean_res, 0, places=2)
+            self.assertGreater(normal_res, 0.1)
+            self.assertGreater(unif_res, 0.1)
+
+    def testSATLoss(self):
+        model = self.mockModel()
+        unsup_input = tf.placeholder(np.float32, shape=(10, 10), name='test_in')
+        unsup_aug_input = tf.placeholder(np.float32, shape=(10, 10), name='test_in')
+        loss = model.add_sat_loss(unsup_input, unsup_aug_input)
+        with self.test_session() as sess:
+
+            # logits are softmaxed afterwards, so don't have to be in [-1,1]
+            clean_res = sess.run(loss, {
+                unsup_input: np.ones((10,10))*-10+np.identity(10, np.float64)*10,
+                unsup_aug_input: np.ones((10,10))*-10+np.identity(10, np.float64)*10,
+            })
+            normal_res = sess.run(loss, {
+                unsup_input: np.ones((10,10))*-10+np.identity(10, np.float64)*10,
+                unsup_aug_input: np.random.normal(size=[10, 10]),
+            })
+            unif_res = sess.run(loss, {
+                unsup_input: np.ones((10,10))*-10+np.identity(10, np.float64)*10,
+                unsup_aug_input: np.random.uniform(-1, 1, size=[10,10]),
+            })
+
+            print(clean_res, normal_res, unif_res)
 
             self.assertAlmostEqual(clean_res, 0, places=2)
             self.assertGreater(normal_res, 0.1)

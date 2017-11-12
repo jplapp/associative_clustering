@@ -28,6 +28,7 @@ from sklearn import svm
 from sklearn.cluster import KMeans
 from sklearn.metrics.cluster import normalized_mutual_info_score
 
+NO_FC_COLLECTION = "NO_FC_COLLECTION"
 
 def show_sample_img(img):
     import matplotlib.pyplot as plt
@@ -378,10 +379,10 @@ class SemisupModel(object):
                 keep_dims=True))
 
         match_ab = tf.matmul(a, b, transpose_b=True,
-                             name='match_ab') * match_scale
-        p_ab = tf.nn.softmax(match_ab, name='p_ab')
-        p_ba = tf.nn.softmax(tf.transpose(match_ab), name='p_ba')
-        p_aba = tf.matmul(p_ab, p_ba, name='p_aba')
+                             name='match_ab'+name) * match_scale
+        p_ab = tf.nn.softmax(match_ab, name='p_ab'+name)
+        p_ba = tf.nn.softmax(tf.transpose(match_ab), name='p_ba'+name)
+        p_aba = tf.matmul(p_ab, p_ba, name='p_aba'+name)
 
         if est_err:
             self.create_walk_statistics(p_aba, equality_matrix)
@@ -393,7 +394,7 @@ class SemisupModel(object):
                 p_target,
                 tf.log(1e-8 + p_aba),
                 weights=walker_weight,
-                scope='loss_aba')
+                scope='loss_aba'+name)
         self.loss_aba = loss_aba
 
         self.add_visit_loss(p_ab, visit_weight, name)
@@ -558,7 +559,7 @@ class SemisupModel(object):
         l2n = tf.norm(embs, axis=1)
         l1_loss((l2n - target) ** 2, weight)
 
-    def create_train_op(self, learning_rate, gradient_multipliers=None):
+    def create_train_op(self, learning_rate, gradient_multipliers=None, fc_stop_multiplier=None):
         """Create and return training operation."""
 
         slim.model_analyzer.analyze_vars(
@@ -591,7 +592,19 @@ class SemisupModel(object):
                                                       self.trainer,
                                                       summarize_gradients=False,
                                                       gradient_multipliers=gradient_multipliers)
-        return self.train_op
+
+        # loss that should not influence last fc layer
+        if len(tf.losses.get_losses(loss_collection=NO_FC_COLLECTION)):
+          no_fc_loss = tf.reduce_sum(tf.losses.get_losses(loss_collection=NO_FC_COLLECTION))
+
+          self.train_op_sat = slim.learning.create_train_op(no_fc_loss,
+                                                        self.trainer,
+                                                        summarize_gradients=False,
+                                                        gradient_multipliers={'logit_fc': 0})
+        else:
+          self.train_op_sat = tf.constant(0)
+
+        return [self.train_op, self.train_op_sat]
 
     def calc_embedding(self, images, endpoint, sess):
         """Evaluate 'endpoint' tensor for all 'images' using batches."""
@@ -711,8 +724,24 @@ class SemisupModel(object):
 
         return test_accuracy, train_accuracy
 
+    def add_sat_loss(self, t_unsup_embs_logits, t_aug_embs_logits, weight=1.0):
+        """loss as in IMSAT paper"""
+
+        softmaxed_unsup = tf.nn.softmax(t_unsup_embs_logits)
+        print('sat')
+
+        self.sat_loss = tf.losses.softmax_cross_entropy(
+          softmaxed_unsup,
+          t_aug_embs_logits,
+          scope='loss_sat',
+          weights=weight,
+          loss_collection=NO_FC_COLLECTION)
+        tf.summary.scalar('Loss_SAT', self.sat_loss)
+
+        return self.sat_loss
+
     def add_transformation_loss(self, t_embs, t_aug_embs, t_embs_logits,
-                                t_aug_embs_logits, batch_size, weight=1, label_smoothing=0):
+                                t_aug_embs_logits, batch_size, weight=1, label_smoothing=0, loss_collection=LOSSES_COLLECTION):
         """ Add a transformation loss.
         Args:
             t_embs: embeddings of input images
@@ -743,9 +772,44 @@ class SemisupModel(object):
         t_target = tf.ones([batch_size ** 2]) - tf.cast(t_xentropy, dtype=tf.float32)
 
         self.t_transf_loss = tf.reduce_mean(tf.abs(t_target - t_emb_sim)) * weight
-        tf.add_to_collection(LOSSES_COLLECTION, self.t_transf_loss)
+        tf.add_to_collection(loss_collection, self.t_transf_loss)
 
         tf.summary.scalar('Loss_Transf', self.t_transf_loss)
+
+        return self.t_transf_loss
+    def add_transformation_loss_sparse(self, t_embs, t_aug_embs, t_embs_logits,
+                                t_aug_embs_logits, num_embs, num_aug_embs, weight=1, label_smoothing=0, loss_collection=LOSSES_COLLECTION):
+        """ Add a transformation loss.
+        Args:
+            t_embs: embeddings of input images
+            t_aug_embs: embeddings of augmented input images
+            t_embs_logits: logits of input images (pre-softmax!)
+            t_aug_embs_logits: logits of augmented input images (pre-softmax!)
+        Returns:
+            Transformation loss. Does not compute xentropy in same class
+        """
+
+        t_logits_softmaxed = tf.nn.softmax(t_embs_logits)
+        #t_aug_logits_softmaxed = tf.nn.softmax(t_aug_embs_logits)
+
+        t_emb_sim = tf.matmul(t_embs, t_aug_embs, transpose_b=True,
+                              name='emb_similarity')
+        t_emb_sim = tf.reshape(t_emb_sim, [num_embs * num_aug_embs])
+
+        # TODO(haeusser) use xentropy without softmax
+        t_xentropy = tf.losses.softmax_cross_entropy(
+                tf_repeat(t_logits_softmaxed, [num_aug_embs, 1]),  # "labels"
+                tf.tile(t_aug_embs_logits, [num_embs, 1]),  # will be softmaxed
+                label_smoothing=label_smoothing,
+                loss_collection=None,  # this is not the final loss yet
+                )
+
+        t_target = tf.ones([num_embs * num_aug_embs]) - tf.cast(t_xentropy, dtype=tf.float32)
+
+        self.t_transf_loss = tf.reduce_mean(tf.abs(t_target - t_emb_sim)) * weight
+        tf.add_to_collection(loss_collection, self.t_transf_loss)
+
+        tf.summary.scalar('Loss_Transf_sp', self.t_transf_loss)
 
         return self.t_transf_loss
 
@@ -778,3 +842,11 @@ def calc_correct_logit_score(preds, lbls, num_labels):
 def calc_nmi(preds, lbls):
     nmi = normalized_mutual_info_score(preds, lbls)
     return nmi
+
+def calc_sat_score(unsup_emb, reg_unsup_emb):
+    "accuracy for self augmentation (embedding augmented image close to non-augmented image)"
+    proximity = np.dot(reg_unsup_emb, unsup_emb.T)
+    closest_unsup = proximity.argmax(-1)
+    should_be = np.repeat(np.arange(len(unsup_emb)), len(reg_unsup_emb) // len(unsup_emb))
+    acc = np.mean(closest_unsup == should_be)
+    return acc
