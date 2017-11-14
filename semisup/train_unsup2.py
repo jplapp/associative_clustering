@@ -25,6 +25,8 @@ python3 ~/lba_tf/semisup/train_unsup2.py  --architecture=resnet_mnist_model --vi
  33% on cifar
    python3 train_unsup2.py  --l1_weight 0 --warmup_steps 4000 --reg_warmup_steps 3000 --decay_steps 10000 --visit_weight_base 0.5 --learning_rate 0.001 --init_with_kmeans --dataset cifar_inmemory --architecture resnet_cifar_model --emb_size 64
 
+svhn
+'python3 ~/lba_tf/semisup/train_unsup2.py  --visit_weight_base=0.5 --max_steps=23000 --decay_steps=10000 --num_unlabeled_images=50000 --beta2=0.99 --num_blocks=5 --reg_warmup_steps=7000 --warmup_steps=2000 --architecture=resnet_mnist_model --num_augmented_samples=4 --norm_weight=1e-05 --l1_weight=0 --dataset=svhn --beta1=0.6 --emb_size=64 --logdir=/work/plapp/logs --unsup_batch_size=130 --dropout_keep_prob=1.0 --learning_rate=0.0005 --reg_decay_factor=0.2 --init_with_kmeans=True
 
   STL-10
   python3 train_unsup2.py --dataset stl10 --architecture resnet_stl10_model --learning_rate 0.001 --warmup_steps 1 --init_with_kmeans --reg_warmup_steps 30000 --decay_steps 10000 --max_steps 35000
@@ -124,7 +126,9 @@ flags.DEFINE_bool('init_with_kmeans', False, 'Initialize centroids using kmeans 
 flags.DEFINE_bool('normalize_embeddings', False, 'Normalize embeddings (l2 norm = 1)')
 flags.DEFINE_bool('volta', False, 'Use more CPU for preprocessing to load GPU')
 flags.DEFINE_bool('use_test', False, 'Use Test images as part of training set. Done by a few clustering algorithms')
+flags.DEFINE_bool('kmeans_sat_thresh', None, 'Init with kmeans when SAT accuracy > x')
 flags.DEFINE_bool('trafo_separate_loss_collection', False, 'Do ignore gradients for transformation loss on last fc layer')
+flags.DEFINE_bool('trafo_late_start', True, 'Start trafo loss after kmeans init')
 flags.DEFINE_bool('shuffle_augmented_samples', False,
                   'If true, the augmented samples are shuffled separately. Otherwise, a batch contains augmentated '
                   'samples of its non-augmented samples')
@@ -160,7 +164,7 @@ def main(_):
     test_images, test_labels = dataset_tools.get_data('test')
 
     if FLAGS.num_unlabeled_images > 0:
-        unlabeled_train_images, _ = dataset_tools.get_data('unlabeled', max_num=FLAGS.num_unlabeled_images)
+        unlabeled_train_images, _ = dataset_tools.get_data('unlabeled', max_num=np.min([FLAGS.num_unlabeled_images, 50000]))
         train_images = np.vstack([train_images, unlabeled_train_images])
 
     if FLAGS.normalize_input:
@@ -362,16 +366,20 @@ def main(_):
         trafo_weight = FLAGS.trafo_weight
         trafo_cen_weight = FLAGS.trafo_cen_weight
 
+        kmeans_initialized = False
+
         for step in range(FLAGS.max_steps):
             import time
             start = time.time()
             if FLAGS.init_with_kmeans:
-                if step <= reg_warmup_steps:
+                if FLAGS.kmeans_sat_thresh is not None and not kmeans_initialized or \
+                        FLAGS.kmeans_sat_thresh is None and step <= reg_warmup_steps:
                     walker_weight_ = 0
                     visit_weight_ = 0
                     logit_weight_ = 0
-                    trafo_weight = 0
                     trafo_cen_weight = 0
+                    if FLAGS.trafo_late_start:
+                        trafo_weight = 0
                 else:
                     walker_weight_ = FLAGS.walker_weight
                     visit_weight_ = FLAGS.visit_weight_base
@@ -399,6 +407,15 @@ def main(_):
                         t_sat_loss_weight: 0,
                         t_learning_rate: 1e-6 + apply_envelope("log", step, learning_rate_, FLAGS.warmup_steps, 0)
                         })
+
+            if FLAGS.kmeans_sat_thresh is not None and step % 200 == 0 and not kmeans_initialized:
+                sat_score = semisup.calc_sat_score(unsup_emb, reg_unsup_emb)
+
+                if sat_score > FLAGS.kmeans_sat_thresh:
+                    print('initializing with kmeans', step, sat_score)
+                    FLAGS.init_with_kmeans = True
+                    kmeans_initialized = True
+                    reg_warmup_steps = step # -> jump to next if clause
 
             if FLAGS.init_with_kmeans and step == reg_warmup_steps:
                 # do kmeans, initialize with kmeans
@@ -448,6 +465,7 @@ def main(_):
                 print('Test error: %.2f %%' % (100 - score * 100))
                 print('Test NMI: %.2f %%' % (nmi * 100))
                 print('Train loss: %.2f ' % train_loss)
+                print('Train loss no fc: %.2f ' % sat_loss)
                 print('Reg loss aba: %.2f ' % reg_loss)
                 print('Estimated Accuracy: %.2f ' % estimated_error)
 
@@ -485,6 +503,9 @@ def main(_):
                 if step == 34999 and score < 0.45:
                   break
                 if step == 14999 and score < 0.225:
+                  break
+
+                if dataset == 'mnist' and step == 6999 and score < 0.15:
                   break
 
 

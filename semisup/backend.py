@@ -306,7 +306,7 @@ class SemisupModel(object):
         self.num_blocks = num_blocks
         self.dropout_keep_prob = dropout_keep_prob
 
-        test_in = None
+        #test_in = None
         if test_in is not None:
             self.test_in = test_in
         elif resize_shape is not None:
@@ -566,8 +566,6 @@ class SemisupModel(object):
                 tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES),
                 print_info=True)
 
-        print(tf.losses.get_losses())
-
         self.train_loss = tf.losses.get_total_loss()
         self.train_loss_average = self.add_average(self.train_loss)
 
@@ -597,10 +595,16 @@ class SemisupModel(object):
         if len(tf.losses.get_losses(loss_collection=NO_FC_COLLECTION)):
           no_fc_loss = tf.reduce_sum(tf.losses.get_losses(loss_collection=NO_FC_COLLECTION))
 
+          def is_not_logit(var):
+            return 'logit_fc' not in var.name
+
+          vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+          vars_no_logit = list(filter(is_not_logit, vars))
+
           self.train_op_sat = slim.learning.create_train_op(no_fc_loss,
                                                         self.trainer,
-                                                        summarize_gradients=False,
-                                                        gradient_multipliers={'logit_fc': 0})
+                                                        variables_to_train=vars_no_logit,
+                                                        summarize_gradients=False)
         else:
           self.train_op_sat = tf.constant(0)
 
