@@ -20,6 +20,14 @@ def apply_augmentation(image, target_shape, params):
     print(image.shape)
     with tf.name_scope('augmentation'):
         shape = tf.shape(image)
+
+        if "horizontal_move" in ap and ap['horizontal_move']:
+          dir = tf.random_uniform([1],minval=-1,maxval=1,dtype=tf.int32)
+          #dir = dir * tf.random_uniform([1],minval=-1,maxval=1,dtype=tf.int32)  # make zero more likely
+
+          print(dir)
+          image = tf.contrib.image.translate(image, [ap['horizontal_move'] * tf.cast(dir[0], tf.float32), 0])
+
         # rotation
         if ap['max_rotate_angle'] > 0:
             angle = tf.random_uniform(

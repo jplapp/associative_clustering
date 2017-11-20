@@ -13,8 +13,7 @@ usage:
    python3 train_unsup2.py [args]
 
 e.g. 99% on MNIST in 10000 steps:
- python3 train_unsup2.py  --l1_weight 0 --warmup_steps 2000 --reg_warmup_steps 1000 --visit_weight_base 1
- --learning_rate 0.001 --init_with_kmeans --max_steps 12000
+ python3 train_unsup2.py  --l1_weight 0 --warmup_steps 2000 --reg_warmup_steps 1000 --visit_weight_base 1  --learning_rate 0.001 --init_with_kmeans --max_steps 12000
 
  MNIST with restnet-12: ~98%   (these are the same hps as above)
  python3 train_unsup2.py --architecture resnet_mnist_model --init_with_kmeans --learning_rate 0.001 --reg_warmup_steps 1000 --visit_weight_base 1 --warmup_steps 2000 --emb_size 64  --max_steps 12000 --l1_weight 0 --num_blocks 2
@@ -126,7 +125,7 @@ flags.DEFINE_bool('init_with_kmeans', False, 'Initialize centroids using kmeans 
 flags.DEFINE_bool('normalize_embeddings', False, 'Normalize embeddings (l2 norm = 1)')
 flags.DEFINE_bool('volta', False, 'Use more CPU for preprocessing to load GPU')
 flags.DEFINE_bool('use_test', False, 'Use Test images as part of training set. Done by a few clustering algorithms')
-flags.DEFINE_bool('kmeans_sat_thresh', None, 'Init with kmeans when SAT accuracy > x')
+flags.DEFINE_float('kmeans_sat_thresh', None, 'Init with kmeans when SAT accuracy > x')
 flags.DEFINE_bool('trafo_separate_loss_collection', False, 'Do ignore gradients for transformation loss on last fc layer')
 flags.DEFINE_bool('trafo_late_start', True, 'Start trafo loss after kmeans init')
 flags.DEFINE_bool('shuffle_augmented_samples', False,
@@ -378,8 +377,7 @@ def main(_):
                     visit_weight_ = 0
                     logit_weight_ = 0
                     trafo_cen_weight = 0
-                    if FLAGS.trafo_late_start:
-                        trafo_weight = 0
+                    trafo_weight = 0
                 else:
                     walker_weight_ = FLAGS.walker_weight
                     visit_weight_ = FLAGS.visit_weight_base
@@ -434,6 +432,7 @@ def main(_):
                 # init with K-Means
                 assign_op = t_sup_emb.assign(np.array(init_virt))
                 sess.run(assign_op)
+                model.reset_optimizer(sess)
 
                 rwalker_weight_ *= FLAGS.reg_decay_factor
                 rvisit_weight_ *= FLAGS.reg_decay_factor
@@ -505,7 +504,7 @@ def main(_):
                 if step == 14999 and score < 0.225:
                   break
 
-                if dataset == 'mnist' and step == 6999 and score < 0.15:
+                if dataset == 'mnist' and step == 6999 and score < 0.25:
                   break
 
 

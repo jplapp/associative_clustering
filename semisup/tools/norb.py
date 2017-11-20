@@ -24,7 +24,7 @@ def get_data(name):
             images = np.append(images, parseNORBFile(f))
         with open(getPath(name, fold, 'cat'), encoding='latin1') as f:
             labels = np.append(labels, parseNORBFile(f))
-    images = images.reshape([-1, IMAGE_SHAPE[0], IMAGE_SHAPE[1]])
+    images = images.reshape([-1, IMAGE_SHAPE[0], IMAGE_SHAPE[1], IMAGE_SHAPE[2]])
     labels = np.repeat(labels, 2)  # left and right image
     labels = labels.reshape([-1])
     assert labels.shape[0] == images.shape[0]
@@ -165,3 +165,12 @@ def parseNORBFile(file_handle, subtensor=None, debug=False):
                                   subtensor)
 
     return result
+
+
+# Dataset specific augmentation parameters.
+augmentation_params = dict()
+augmentation_params['max_crop_percentage'] = 0.2
+augmentation_params['brightness_max_delta'] = 0.5
+augmentation_params['noise_std'] = 0.05
+augmentation_params['flip'] = False
+augmentation_params['max_rotate_angle'] = 0

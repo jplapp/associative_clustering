@@ -593,6 +593,10 @@ class SemisupModel(object):
 
         # loss that should not influence last fc layer
         if len(tf.losses.get_losses(loss_collection=NO_FC_COLLECTION)):
+          # todo maybe use second optimizer here
+          #self.trainer2 = tf.train.AdamOptimizer(learning_rate,
+          #                                     beta1=self.beta1,
+          #                                     beta2=self.beta2)
           no_fc_loss = tf.reduce_sum(tf.losses.get_losses(loss_collection=NO_FC_COLLECTION))
 
           def is_not_logit(var):

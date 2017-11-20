@@ -49,8 +49,14 @@ def get_data(name, max_num=None):
     elif name == 'test':
         data = scipy.io.loadmat(DATADIR + 'test_32x32.mat')
 
+
     images = np.rollaxis(data['X'], -1)
     labels = data['y'].ravel() % 10
+
+    num_images = len(images)
+    if max_num is not None and num_images > max_num:
+        rng = np.random.RandomState()
+        images = images[rng.choice(len(images), max_num, False)]
 
     if name == 'unlabeled':
         return images, None
@@ -69,4 +75,5 @@ augmentation_params['contrast_upper'] = 1.8
 augmentation_params['hue_max_delta'] = 0.5
 augmentation_params['noise_std'] = 0.05
 augmentation_params['flip'] = False
-augmentation_params['max_rotate_angle'] = 10
+augmentation_params['max_rotate_angle'] = 15
+

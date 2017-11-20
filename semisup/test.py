@@ -35,7 +35,7 @@ class TestEvalulationMethods(unittest.TestCase):
 
         conf_mtx, acc = calc_correct_logit_score(preds, labels, 3)
 
-        target = np.array([[1, 0, 0], [1, 1, 0], [0, 0, 2]])
+        target = np.array([[1,1,0],[0,1,0],[0,0,2]])
 
         self.assertEqual(conf_mtx.tolist(), target.tolist())
         self.assertAlmostEqual(acc, 0.8)

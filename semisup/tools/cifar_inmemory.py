@@ -323,7 +323,7 @@ if __name__ == '__main__':
 
 # Dataset specific augmentation parameters.
 augmentation_params = dict()
-augmentation_params['max_crop_percentage'] = 0.3
+augmentation_params['max_crop_percentage'] = 0.2
 augmentation_params['brightness_max_delta'] = 0.5
 augmentation_params['saturation_lower'] = 0.7
 augmentation_params['saturation_upper'] = 1.3
@@ -332,4 +332,4 @@ augmentation_params['contrast_upper'] = 1.8
 augmentation_params['hue_max_delta'] = 0.2
 augmentation_params['noise_std'] = 0.05
 augmentation_params['flip'] = True
-augmentation_params['max_rotate_angle'] = 0
+augmentation_params['max_rotate_angle'] = 10
