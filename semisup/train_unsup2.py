@@ -355,6 +355,21 @@ def main(_):
             restorer = tf.train.Saver(var_list=variables)
             restorer.restore(sess, FLAGS.restore_checkpoint)
 
+        extra_feed_dict = {}
+        if FLAGS.architecture == 'keras_resnet':
+            # load imagenet weights
+            print('initializing imagenet weights')
+            from keras.applications.resnet50 import WEIGHTS_PATH_NO_TOP
+            from keras.utils.data_utils import get_file
+            from semisup.architectures import k_model
+            import keras
+            weights_path = get_file('resnet50_weights_tf_dim_ordering_tf_kernels_notop.h5',
+                                    WEIGHTS_PATH_NO_TOP,
+                                    cache_subdir='models',
+                                    md5_hash='a268eb855778b3df3c7506639542a6af')
+            k_model.load_weights(weights_path)
+            extra_feed_dict = {keras.backend.learning_phase(): 1}
+
         from numpy.linalg import norm
 
         reg_warmup_steps = FLAGS.reg_warmup_steps
@@ -388,23 +403,23 @@ def main(_):
                 walker_weight_ = apply_envelope("log", step, FLAGS.walker_weight, reg_warmup_steps, 0)
                 visit_weight_ = apply_envelope("log", step, FLAGS.visit_weight_base, reg_warmup_steps, 0)
 
+            feed_dict = {rwalker_weight: rwalker_weight_ * FLAGS.reg_association_weight,
+                         rvisit_weight: rvisit_weight_ * FLAGS.reg_association_weight,
+                         walker_weight: walker_weight_ * FLAGS.cluster_association_weight,
+                         visit_weight: visit_weight_ * FLAGS.cluster_association_weight,
+                         t_l1_weight: FLAGS.l1_weight,
+                         t_norm_weight: FLAGS.norm_weight,
+                         t_logit_weight: logit_weight_,
+                         t_trafo_weight: trafo_weight,
+                         t_trafo_cen_weight: trafo_cen_weight,
+                         t_sat_loss_weight: 0,
+                         t_learning_rate: 1e-6 + apply_envelope("log", step, learning_rate_, FLAGS.warmup_steps, 0)
+            }
             _, sat_loss, train_loss, summaries, centroids, unsup_emb, reg_unsup_emb, estimated_error, p_ab, p_ba, p_aba, \
             reg_loss, trafo_loss = sess.run(
                     [train_op, train_op_sat, model.train_loss, summary_op, t_sup_emb, t_unsup_emb, t_reg_unsup_emb,
                      model.estimate_error, model.p_ab,
-                     model.p_ba, model.p_aba, model.reg_loss_aba, t_trafo_loss], {
-                        rwalker_weight: rwalker_weight_ * FLAGS.reg_association_weight,
-                        rvisit_weight: rvisit_weight_ * FLAGS.reg_association_weight,
-                        walker_weight: walker_weight_ * FLAGS.cluster_association_weight,
-                        visit_weight: visit_weight_ * FLAGS.cluster_association_weight,
-                        t_l1_weight: FLAGS.l1_weight,
-                        t_norm_weight: FLAGS.norm_weight,
-                        t_logit_weight: logit_weight_,
-                        t_trafo_weight: trafo_weight,
-                        t_trafo_cen_weight: trafo_cen_weight,
-                        t_sat_loss_weight: 0,
-                        t_learning_rate: 1e-6 + apply_envelope("log", step, learning_rate_, FLAGS.warmup_steps, 0)
-                        })
+                     model.p_ba, model.p_aba, model.reg_loss_aba, t_trafo_loss], {**extra_feed_dict, **feed_dict})
 
             if FLAGS.kmeans_sat_thresh is not None and step % 200 == 0 and not kmeans_initialized:
                 sat_score = semisup.calc_sat_score(unsup_emb, reg_unsup_emb)
@@ -417,7 +432,7 @@ def main(_):
 
             if FLAGS.init_with_kmeans and step == reg_warmup_steps:
                 # do kmeans, initialize with kmeans
-                embs = model.calc_embedding(c_train_imgs, model.test_emb, sess)
+                embs = model.calc_embedding(c_train_imgs, model.test_emb, sess, extra_feed_dict)
 
                 kmeans = semisup.KMeans(n_clusters=num_labels, random_state=0).fit(embs)
 
@@ -455,7 +470,7 @@ def main(_):
                 print('trafo loss', trafo_loss)
                 print('reg loss' , reg_loss)
                 print('Time for step', time.time() - start)
-                test_pred = model.classify(c_test_imgs, sess).argmax(-1)
+                test_pred = model.classify(c_test_imgs, sess, extra_feed_dict).argmax(-1)
 
                 nmi = semisup.calc_nmi(test_pred, test_labels)
 
@@ -471,7 +486,7 @@ def main(_):
                 sat_score = semisup.calc_sat_score(unsup_emb, reg_unsup_emb)
                 print('sat accuracy', sat_score)
 
-                embs = model.calc_embedding(c_test_imgs, model.test_emb, sess)
+                embs = model.calc_embedding(c_test_imgs, model.test_emb, sess, extra_feed_dict)
 
                 c_n = norm(centroids, axis=1, ord=2)
                 e_n = norm(embs[0:100], axis=1, ord=2)

@@ -614,18 +614,19 @@ class SemisupModel(object):
 
         return [self.train_op, self.train_op_sat]
 
-    def calc_embedding(self, images, endpoint, sess):
+    def calc_embedding(self, images, endpoint, sess, extra_feed_dict={}):
         """Evaluate 'endpoint' tensor for all 'images' using batches."""
         batch_size = self.test_batch_size
         emb = []
         for i in range(0, len(images), batch_size):
-            emb.append(endpoint.eval({self.test_in: images[i: i + batch_size]},
+            feed_dict = {self.test_in: images[i: i + batch_size]}
+            emb.append(endpoint.eval({**extra_feed_dict, **feed_dict},
                                      session=sess))
         return np.concatenate(emb)
 
-    def classify(self, images, session):
+    def classify(self, images, session, extra_feed_dict={}):
         """Compute logit scores for provided images."""
-        return self.calc_embedding(images, self.test_logit, session)
+        return self.calc_embedding(images, self.test_logit, session, extra_feed_dict)
 
     def get_images(self, img_queue, lbl_queue, num_batches, sess):
         imgs = []

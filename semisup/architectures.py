@@ -414,6 +414,52 @@ def stl10_ex_cnn(inputs,
 
     return emb
 
+# A Resnet architecture from keras, see https://keras.io/applications/#resnet50
+# Can be used with the standard weights from He et al.
+# train_unsup2.py for an example
+# note: when using tf.global_var_intializer, the pretrained weights have to be loaded again
+# sets the global k_endpoint variable with the 2048-dimensional embedding vectors, useful for debugging
+# (e.g. for calculating k-means on the resnet embeddings)
+# resizes images to imagenet size, and applies standard preprocessing
+
+from keras.applications.resnet50 import ResNet50
+from keras.applications.resnet50 import preprocess_input
+k_model = None
+k_endpoint = None
+
+def keras_resnet(inputs,
+                 is_training=True,
+                 emb_size=128,
+                 l2_weight=1e-4,
+                 img_shape=None,
+                 new_shape=None,
+                 image_summary=False,
+                 augmentation_function=None,
+                 num_blocks=None,
+                 dropout_keep_prob=1,
+                 batch_norm_decay=0.99,
+                 resnet_size=32):
+    global k_endpoint
+    global k_model
+
+    if k_model is None:
+        k_model = ResNet50(include_top=False)
+
+    inputs = tf.cast(inputs, tf.float32)
+    resized = tf.image.resize_images(inputs, (224, 224))
+    inputs = preprocess_input(resized)
+
+    resnet = k_model(inputs)
+    if k_endpoint is None:
+        k_endpoint = resnet
+
+    net = tf.contrib.slim.flatten(resnet)
+    net = tf.stop_gradient(net)
+    net = tf.layers.dense(inputs=net, units=emb_size)
+
+    net = tf.identity(net, 'embeddings')
+    return net
+
 
 def svhn_model(inputs,
                is_training=True,
