@@ -114,11 +114,12 @@ flags.DEFINE_string('init_method', 'normal_center03',
                     'How to initialize image centroids. Should be one  of [uniform_128, uniform_10, uniform_255, avg, '
                     'random_center]')
 flags.DEFINE_float('dropout_keep_prob', 0.8, 'Keep Prop in dropout. Set to 1 to deactivate dropout')
+flags.DEFINE_float('zero_fact', 1, 'Used for simulation imbalanced class distribution. Only this fraction of zeros will be used.')
 
 flags.DEFINE_string('logdir', None, 'Where to put the logs. By default, no logs will be saved.')
 flags.DEFINE_string('dataset', 'mnist', 'Which dataset to work on.')
 flags.DEFINE_string('architecture', 'mnist_model_dropout', 'Which network architecture '
-                                                           'from architectures.py to use.')
+                                                           'from architectures.py to use.' )
 
 flags.DEFINE_string('restore_checkpoint', None, 'restore weights from checkpoint, e.g. some autoencoder pretraining')
 flags.DEFINE_bool('init_with_kmeans', False, 'Initialize centroids using kmeans after reg_warmup_steps steps.')
@@ -146,6 +147,7 @@ from augment import apply_augmentation
 
 
 def main(_):
+    FLAGS.eval_interval = 1000  # todo remove
     if FLAGS.logdir is not None:
         if FLAGS.taskid is not None:
             FLAGS.logdir = FLAGS.logdir + '/t_' + str(FLAGS.taskid)
@@ -161,6 +163,21 @@ def main(_):
 
     train_images, train_labels_svm = dataset_tools.get_data('train')  # no train labels nowhere
     test_images, test_labels = dataset_tools.get_data('test')
+
+    if FLAGS.zero_fact < 1:
+        # exclude a random set of zeros (not at the end, then there would be many batches without zeros)
+        keep = np.ones(len(train_labels_svm), dtype=bool)
+        zero_indices = np.where((train_labels_svm == 0))[0]
+
+        remove = np.random.uniform(0, 1, len(zero_indices))
+        zero_indices_to_remove = zero_indices[remove > FLAGS.zero_fact]
+
+        keep[zero_indices_to_remove] = False
+
+        train_images = train_images[keep]
+        train_labels_svm = train_labels_svm[keep]
+
+        print('using only a fraction of zeros, resulting in the following shape:', train_images.shape)
 
     if FLAGS.num_unlabeled_images > 0:
         unlabeled_train_images, _ = dataset_tools.get_data('unlabeled', max_num=np.min([FLAGS.num_unlabeled_images, 50000]))

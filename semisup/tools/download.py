@@ -21,8 +21,6 @@ import sys
 import tarfile
 import zipfile
 
-import urllib.request
-
 
 ########################################################################
 

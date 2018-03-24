@@ -422,6 +422,8 @@ def stl10_ex_cnn(inputs,
 # (e.g. for calculating k-means on the resnet embeddings)
 # resizes images to imagenet size, and applies standard preprocessing
 
+# if num_blocks is 0, gradients are not propagated through the net (only the embedding layer will be trained)
+
 from keras.applications.resnet50 import ResNet50
 from keras.applications.resnet50 import preprocess_input
 k_model = None
@@ -454,7 +456,9 @@ def keras_resnet(inputs,
         k_endpoint = resnet
 
     net = tf.contrib.slim.flatten(resnet)
-    net = tf.stop_gradient(net)
+
+    if num_blocks == 0:
+        net = tf.stop_gradient(net)
     net = tf.layers.dense(inputs=net, units=emb_size)
 
     net = tf.identity(net, 'embeddings')

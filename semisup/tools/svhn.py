@@ -56,7 +56,10 @@ def get_data(name, max_num=None):
     num_images = len(images)
     if max_num is not None and num_images > max_num:
         rng = np.random.RandomState()
-        images = images[rng.choice(len(images), max_num, False)]
+        choice = rng.choice(len(images), max_num, False)
+        images = images[choice]
+        labels = labels[choice]
+
 
     if name == 'unlabeled':
         return images, None

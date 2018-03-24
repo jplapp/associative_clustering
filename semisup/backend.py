@@ -39,7 +39,9 @@ def show_sample_img(img):
 def show_sample_img_inline(imgs):
     import matplotlib.pyplot as plt
     f, axarr = plt.subplots(1, max(len(imgs), 2))
+    plt.axis('off')
     for ind, img in enumerate(imgs):
+        axarr[ind].axis('off')
         axarr[ind].imshow(img.reshape(28, 28), cmap='gray')
     plt.show()
 
@@ -50,6 +52,7 @@ def show_samples(imgs, image_shape, scale=128., figsize=(8, 16)):
     for i in range(imgs.shape[0]):
         row = axes[i]
         for image, ax in zip(imgs[i], row):
+
             ax.imshow(np.array(image.reshape(image_shape) * scale + scale, np.uint8))
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
@@ -359,7 +362,7 @@ class SemisupModel(object):
                     scope='logit_fc')
 
     def add_semisup_loss(self, a, b, labels, walker_weight=1.0,
-                         visit_weight=1.0, match_scale=1.0, est_err=True, name=''):
+                         visit_weight=1.0, match_scale=1.0, est_err=True, name='', use_proximity_loss=False):
         """Add semi-supervised classification loss to the model.
 
         The loss consists of two terms: "walker" and "visit".
@@ -397,7 +400,10 @@ class SemisupModel(object):
                 scope='loss_aba'+name)
         self.loss_aba = loss_aba
 
-        self.add_visit_loss(p_ab, visit_weight, name)
+        if use_proximity_loss:
+            self.add_proximity_loss(p_ab, p_ba, visit_weight)
+        else:
+            self.add_visit_loss(p_ab, visit_weight)
 
         tf.summary.scalar('Loss_aba'+name, loss_aba)
 
@@ -507,6 +513,24 @@ class SemisupModel(object):
 
         tf.summary.scalar('Loss_Visit' + name, visit_loss)
 
+    def add_proximity_loss(self, p_ba, p_ab, weight=1.0, name=''):
+        """Add the "proximity" loss to the model."""
+
+        print('adding proximity loss')
+        p_bab = tf.matmul(p_ba, p_ab, name='p_bab')
+
+        visit_probability = tf.reduce_mean(p_bab, [0], name='visit_prob_bab'+name, keep_dims=True)
+
+        t_nb = tf.shape(p_ab)[1]
+        visit_loss = tf.losses.softmax_cross_entropy(
+                tf.fill([1, t_nb], 1.0 / tf.cast(t_nb, tf.float32)),
+                tf.log(1e-8 + visit_probability),
+                weights=weight,
+                scope='loss_visit' + name)
+
+        tf.summary.scalar('Loss_Visit' + name, visit_loss)
+
+
     def add_logit_loss(self, logits, labels, weight=1.0, smoothing=0.0):
         """Add supervised classification loss to the model."""
 
@@ -531,6 +555,7 @@ class SemisupModel(object):
         # Using the square root of the correct round trip probalilty as an
         # estimate
         # of the current classifier accuracy.
+        # should be called estimated accuracy
         per_row_accuracy = 1.0 - tf.reduce_sum((equality_matrix * p_aba),
                                                1) ** 0.5
         estimate_error = tf.reduce_mean(
@@ -557,7 +582,8 @@ class SemisupModel(object):
     def add_emb_normalization(self, embs, weight, target=1):
         """weight should be a tensor"""
         l2n = tf.norm(embs, axis=1)
-        l1_loss((l2n - target) ** 2, weight)
+        self.l2n = l2n
+        self.normalization = l1_loss((l2n - target) ** 2, weight)
 
     def create_train_op(self, learning_rate, gradient_multipliers=None, fc_stop_multiplier=None):
         """Create and return training operation."""

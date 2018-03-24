@@ -161,7 +161,10 @@ def _unpickle(params, filename):
     with open(file_path, mode='rb') as file:
         # In Python 3.X it is important to set the encoding,
         # otherwise an exception is raised here.
-        data = pickle.load(file, encoding='bytes')
+        try:
+            data = pickle.load(file, encoding='bytes')
+        except:
+            data = pickle.load(file)  # python2
 
     return data
 
