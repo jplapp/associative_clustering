@@ -12,32 +12,6 @@ Runs on mnist, cifar10, svhn, stl10 and potentially more datasets
 usage:
    python3 train_unsup2.py [args]
 
-e.g. 99% on MNIST in 10000 steps:
- python3 train_unsup2.py  --l1_weight 0 --warmup_steps 2000 --reg_warmup_steps 1000 --visit_weight_base 1  --learning_rate 0.001 --init_with_kmeans --max_steps 12000
-
- MNIST with restnet-12: ~98%   (these are the same hps as above)
- python3 train_unsup2.py --architecture resnet_mnist_model --init_with_kmeans --learning_rate 0.001 --reg_warmup_steps 1000 --visit_weight_base 1 --warmup_steps 2000 --emb_size 64  --max_steps 12000 --l1_weight 0 --num_blocks 2
-python3 ~/lba_tf/semisup/train_unsup2.py  --architecture=resnet_mnist_model --visit_weight_base=1.0 --max_steps=12000 --unsup_batch_size=100 --learning_rate=0.0005 --warmup_steps=1500 --num_blocks=2 --reg_warmup_steps=1500 --dataset=mnist --init_with_kmeans=True --l1_weight=0 --decay_steps=5000
- or 49% on FRGC:
-  python3 train_unsup2.py  --l1_weight 0 --warmup_steps 3000 --reg_warmup_steps 2000 --visit_weight_base 0.05 --learning_rate 0.001 --init_with_kmeans --dataset frgc
-
- 33% on cifar
-   python3 train_unsup2.py  --l1_weight 0 --warmup_steps 4000 --reg_warmup_steps 3000 --decay_steps 10000 --visit_weight_base 0.5 --learning_rate 0.001 --init_with_kmeans --dataset cifar_inmemory --architecture resnet_cifar_model --emb_size 64
-
-svhn
-'python3 ~/lba_tf/semisup/train_unsup2.py  --visit_weight_base=0.5 --max_steps=23000 --decay_steps=10000 --num_unlabeled_images=50000 --beta2=0.99 --num_blocks=5 --reg_warmup_steps=7000 --warmup_steps=2000 --architecture=resnet_mnist_model --num_augmented_samples=4 --norm_weight=1e-05 --l1_weight=0 --dataset=svhn --beta1=0.6 --emb_size=64 --logdir=/work/plapp/logs --unsup_batch_size=130 --dropout_keep_prob=1.0 --learning_rate=0.0005 --reg_decay_factor=0.2 --init_with_kmeans=True
-
-  STL-10
-  python3 train_unsup2.py --dataset stl10 --architecture resnet_stl10_model --learning_rate 0.001 --warmup_steps 1 --init_with_kmeans --reg_warmup_steps 30000 --decay_steps 10000 --max_steps 35000
-
-  python3 /efs/lba_tf/semisup/train_unsup2.py --dataset stl10 --architecture resnet_stl10_model --learning_rate 0.001 --warmup_steps 2000 --init_with_kmeans --reg_warmup_steps 30000 --decay_steps 10000 --max_steps 35000
-
-  # only classification (only augmentation): best SVM scores 53% (resnet) 51% (broxnet)
-     -> python3 train_unsup2.py  --l1_weight 0 --warmup_steps 4000 --reg_warmup_steps 300000 --decay_steps 30000 --num_augmented_samples 10 --unsup_batch_size 30 --learning_rate 0.00
-1 --init_with_kmeans --dataset cifar_inmemory --architecture resnet_cifar_model --emb_size 128 --norm_weight 0.00001 --svm_test_interval 2000
-
-     ->python3 train_unsup2.py  --l1_weight 0 --warmup_steps 2000 --reg_warmup_steps 300000 --decay_steps 20000 --unsup_batch_size 30 --num_augmented_samples 10 --norm_weight 0.0000
-1 --learning_rate 0.001 --init_with_kmeans --dataset cifar_inmemory --architecture stl10_ex_cnn --emb_size 128 --svm_test_interval 2000
 """
 
 from __future__ import absolute_import
@@ -77,23 +51,17 @@ flags.DEFINE_integer('num_unlabeled_images', 0, 'How many images to use from the
 flags.DEFINE_float('visit_weight_base', 0.5, 'Weight for visit loss.')
 flags.DEFINE_float('rvisit_weight', 1, 'Weight for reg visit loss.')
 flags.DEFINE_float('reg_decay_factor', 0.2, 'Decay reg weight after kmeans initialization')
-flags.DEFINE_float('visit_weight_add', 0, 'Additional weight for visit loss after warmup.')
-
-flags.DEFINE_float('centroid_momentum', 0, 'Centroid momentum to stabilarize centroids.')
 
 flags.DEFINE_float('cluster_association_weight', 1.0, 'Weight for cluster associations.')
 flags.DEFINE_float('reg_association_weight', 1.0, 'Weight for reg associations.')
-flags.DEFINE_float('logit_entropy_weight', 0, 'Weight for 2) logit entropy.')
-flags.DEFINE_float('cluster_hardening_weight', 0, 'Weight for 1) cluster hardening using logits.')
 flags.DEFINE_float('trafo_weight', 0, 'Weight for 4) transformation loss.')
-flags.DEFINE_float('trafo_cen_weight', 0, 'Weight for 4) transformation loss on centroids')
 
 flags.DEFINE_float('beta1', 0.8, 'beta1 parameter for adam')
 flags.DEFINE_float('beta2', 0.9, 'beta2 parameter for adam')
 
 flags.DEFINE_float('l1_weight', 0.0002, 'Weight for l1 embeddding regularization')
 flags.DEFINE_float('norm_weight', 0.0002, 'Weight for embedding normalization')
-flags.DEFINE_float('logit_weight', 0.5, 'Weight for l1 embeddding regularization')
+flags.DEFINE_float('logit_weight', 0.5, 'Weight for logit loss')
 
 flags.DEFINE_float('walker_weight', 1.0, 'Weight for walker loss.')
 flags.DEFINE_float('rwalker_weight', 1.0, 'Weight for reg walker loss.')
@@ -106,7 +74,7 @@ flags.DEFINE_integer('num_blocks', 3, 'Number of blocks in resnet')
 flags.DEFINE_integer('num_augmented_samples', 3, 'Number of augmented samples for each image.')
 flags.DEFINE_float('scale_match_ab', 1,
                    'How to scale match ab to prevent numeric instability. Use when using embedding normalization')
-flags.DEFINE_float('norm_target', 3, 'Target of embedding normalization')
+flags.DEFINE_float('norm_target', 1, 'Target of embedding normalization')
 
 flags.DEFINE_string('optimizer', 'adam', 'Optimizer. Can be [adam, sgd, rms]')
 
@@ -128,7 +96,6 @@ flags.DEFINE_bool('volta', False, 'Use more CPU for preprocessing to load GPU')
 flags.DEFINE_bool('use_test', False, 'Use Test images as part of training set. Done by a few clustering algorithms')
 flags.DEFINE_float('kmeans_sat_thresh', None, 'Init with kmeans when SAT accuracy > x')
 flags.DEFINE_bool('trafo_separate_loss_collection', False, 'Do ignore gradients for transformation loss on last fc layer')
-flags.DEFINE_bool('trafo_late_start', True, 'Start trafo loss after kmeans init')
 flags.DEFINE_bool('shuffle_augmented_samples', False,
                   'If true, the augmented samples are shuffled separately. Otherwise, a batch contains augmentated '
                   'samples of its non-augmented samples')
@@ -272,7 +239,6 @@ def main(_):
         walker_weight = tf.placeholder("float", shape=[])
         t_logit_weight = tf.placeholder("float", shape=[])
         t_trafo_weight = tf.placeholder("float", shape=[])
-        t_trafo_cen_weight = tf.placeholder("float", shape=[])
 
         t_l1_weight = tf.placeholder("float", shape=[])
         t_norm_weight = tf.placeholder("float", shape=[])
@@ -318,9 +284,6 @@ def main(_):
 
         model.add_sat_loss(t_unsup_logit, t_reg_unsup_logit, weight=t_sat_loss_weight)
 
-        entropy = model.add_logit_entropy(t_sup_logit, weight=FLAGS.logit_entropy_weight)
-        kl_div = model.add_cluster_hardening_loss(t_sup_logit, weight=FLAGS.cluster_hardening_weight)
-
         trafo_lc = semisup.NO_FC_COLLECTION if FLAGS.trafo_separate_loss_collection else semisup.LOSSES_COLLECTION
 
         if FLAGS.trafo_weight > 0:
@@ -331,14 +294,6 @@ def main(_):
         else:
           t_trafo_loss = tf.constant(0)
 
-
-        if FLAGS.trafo_cen_weight > 0:
-          t_trafo_cen_loss = model.add_transformation_loss_sparse(t_sup_emb, t_unsup_emb, t_sup_logit,
-                                                     t_unsup_logit, num_labels * FLAGS.virtual_embeddings_per_class,
-                                                     FLAGS.unsup_batch_size, weight=t_trafo_cen_weight, label_smoothing=0, loss_collection=trafo_lc)
-        else:
-          t_trafo_cen_loss = tf.constant(0)
-
         model.add_emb_regularization(t_all_unsup_emb, weight=t_l1_weight)
         model.add_emb_regularization(t_sup_emb, weight=t_l1_weight)
 
@@ -346,7 +301,7 @@ def main(_):
         model.add_emb_normalization(t_sup_emb, weight=t_norm_weight, target=FLAGS.norm_target)
         model.add_emb_normalization(t_all_unsup_emb, weight=t_norm_weight, target=FLAGS.norm_target)
 
-        gradient_multipliers = {t_sup_emb: 1 - FLAGS.centroid_momentum}
+        gradient_multipliers = {t_sup_emb: 1 }
         [train_op, train_op_sat] = model.create_train_op(t_learning_rate, gradient_multipliers=gradient_multipliers)
 
         summary_op = tf.summary.merge_all()
@@ -373,19 +328,6 @@ def main(_):
             restorer.restore(sess, FLAGS.restore_checkpoint)
 
         extra_feed_dict = {}
-        if FLAGS.architecture == 'keras_resnet':
-            # load imagenet weights
-            print('initializing imagenet weights')
-            from keras.applications.resnet50 import WEIGHTS_PATH_NO_TOP
-            from keras.utils.data_utils import get_file
-            from semisup.architectures import k_model
-            import keras
-            weights_path = get_file('resnet50_weights_tf_dim_ordering_tf_kernels_notop.h5',
-                                    WEIGHTS_PATH_NO_TOP,
-                                    cache_subdir='models',
-                                    md5_hash='a268eb855778b3df3c7506639542a6af')
-            k_model.load_weights(weights_path)
-            extra_feed_dict = {keras.backend.learning_phase(): 1}
 
         from numpy.linalg import norm
 
@@ -395,7 +337,6 @@ def main(_):
         rvisit_weight_ = FLAGS.rvisit_weight
         learning_rate_ = FLAGS.learning_rate
         trafo_weight = FLAGS.trafo_weight
-        trafo_cen_weight = FLAGS.trafo_cen_weight
 
         kmeans_initialized = False
 
@@ -408,14 +349,12 @@ def main(_):
                     walker_weight_ = 0
                     visit_weight_ = 0
                     logit_weight_ = 0
-                    trafo_cen_weight = 0
                     trafo_weight = 0
                 else:
                     walker_weight_ = FLAGS.walker_weight
                     visit_weight_ = FLAGS.visit_weight_base
                     logit_weight_ = FLAGS.logit_weight
                     trafo_weight = FLAGS.trafo_weight
-                    trafo_cen_weight = FLAGS.trafo_cen_weight
             else:
                 walker_weight_ = apply_envelope("log", step, FLAGS.walker_weight, reg_warmup_steps, 0)
                 visit_weight_ = apply_envelope("log", step, FLAGS.visit_weight_base, reg_warmup_steps, 0)
@@ -428,7 +367,6 @@ def main(_):
                          t_norm_weight: FLAGS.norm_weight,
                          t_logit_weight: logit_weight_,
                          t_trafo_weight: trafo_weight,
-                         t_trafo_cen_weight: trafo_cen_weight,
                          t_sat_loss_weight: 0,
                          t_learning_rate: 1e-6 + apply_envelope("log", step, learning_rate_, FLAGS.warmup_steps, 0)
             }
